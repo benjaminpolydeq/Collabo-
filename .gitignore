@@ -1,0 +1,70 @@
+# ===============================
+# Environnement & secrets
+# ===============================
+.env
+.env.*
+!.env.exemple
+
+# ===============================
+# Données utilisateurs (CHAT / IA)
+# ===============================
+data/
+*.json
+*.db
+*.sqlite3
+
+# ===============================
+# Environnement Python
+# ===============================
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# ===============================
+# Streamlit
+# ===============================
+.streamlit/secrets.toml
+.streamlit/.cache
+.streamlit/.streamlit.log
+
+# ===============================
+# Logs & fichiers temporaires
+# ===============================
+*.log
+*.tmp
+*.bak
+*.swp
+
+# ===============================
+# OS
+# ===============================
+.DS_Store
+Thumbs.db
+
+# ===============================
+# IDE / Editor
+# ===============================
+.vscode/
+.idea/
+*.iml
+
+# ===============================
+# Build / Packaging
+# ===============================
+build/
+dist/
+*.egg-info/
+
+# ===============================
+# Docker (optionnel)
+# ===============================
+docker-compose.override.yml
+
+# ===============================
+# Cache IA / modèles
+# ===============================
+models/
+.cache/
