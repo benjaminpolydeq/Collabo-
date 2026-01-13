@@ -1,6 +1,5 @@
 """
 Service d'Intelligence Artificielle pour Collabo
-Multi-utilisateur, Claude + GPT, mode mock si API absente
 app/services/ai_service.py
 """
 
@@ -9,63 +8,25 @@ import json
 from typing import Dict, List, Optional
 from datetime import datetime
 
-import streamlit as st  # pour logs et warnings
-
-# Helper pour extraire JSON même s'il est encadré par ``` ou ```json
-def _extract_json(content: str) -> str:
-    if "```json" in content:
-        return content.split("```json")[1].split("```")[0].strip()
-    elif "```" in content:
-        return content.split("```")[1].split("```")[0].strip()
-    return content.strip()
-
+try:
+    import openai
+except ImportError:
+    openai = None
+    print("⚠️  OpenAI non installé, le service IA fonctionnera en mode mock.")
 
 class AIService:
-    """Service IA multi-utilisateur pour Collabo"""
+    """Service d'analyse IA des conversations utilisant OpenAI GPT"""
 
-    def __init__(self, api_key: Optional[str] = None, user_id: Optional[str] = None, model_type: str = "anthropic"):
-        """
-        Args:
-            api_key: clé API pour Claude ou OpenAI
-            user_id: identifiant de l'utilisateur (pour multi-utilisateur)
-            model_type: 'anthropic' ou 'openai'
-        """
-        self.user_id = user_id or "default_user"
-        self.model_type = model_type.lower()
-
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY") if model_type == "anthropic" else os.getenv("OPENAI_API_KEY")
-
-        self.client = None
-
-        if self.model_type == "anthropic":
-            try:
-                import anthropic
-                if self.api_key:
-                    self.client = anthropic.Anthropic(api_key=self.api_key)
-                else:
-                    st.warning("⚠️ Clé API Anthropic manquante. Mode mock activé.")
-            except ImportError:
-                st.error("Package 'anthropic' non installé. Mode mock activé.")
-        elif self.model_type == "openai":
-            try:
-                import openai
-                if self.api_key:
-                    openai.api_key = self.api_key
-                    self.client = openai
-                else:
-                    st.warning("⚠️ Clé API OpenAI manquante. Mode mock activé.")
-            except ImportError:
-                st.error("Package 'openai' non installé. Mode mock activé.")
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if self.api_key and openai:
+            openai.api_key = self.api_key
         else:
-            st.warning(f"⚠️ Modèle inconnu '{model_type}'. Mode mock activé.")
-
-    # -----------------------------------
-    # Méthodes principales
-    # -----------------------------------
+            print("⚠️  Pas de clé OpenAI fournie ou OpenAI non installé. Mode mock activé.")
 
     def analyze_conversation(self, conversation_text: str, contact_info: Dict) -> Dict:
-        """Analyse la conversation et retourne un JSON structuré"""
-        if not self.client:
+        """Analyse une conversation et renvoie des insights"""
+        if not self.api_key or not openai:
             return self._mock_analysis()
 
         prompt = f"""
@@ -80,44 +41,38 @@ Conversation:
 {conversation_text}
 
 Fournis une analyse structurée au format JSON avec:
-1. "key_points": Liste des 3-5 points clés
-2. "opportunities": Opportunités de collaboration
+1. "key_points": Liste des 3-5 points clés de la discussion
+2. "opportunities": Opportunités de collaboration identifiées
 3. "cooperation_model": Modèle de coopération suggéré
-4. "credibility_score": 0-10
-5. "usefulness_score": 0-10
-6. "success_probability": 0-100%
-7. "priority_level": low/medium/high
-8. "next_actions": 3 prochaines actions
+4. "credibility_score": Score de 0-10
+5. "usefulness_score": Score de 0-10
+6. "success_probability": Probabilité de succès (0-100%)
+7. "priority_level": Niveau de priorité (low/medium/high)
+8. "next_actions": 3 prochaines actions recommandées
 9. "red_flags": Signaux d'alerte éventuels
-10. "strengths": Points forts
+10. "strengths": Points forts de cette relation
+
 Réponds uniquement avec le JSON.
 """
 
         try:
-            if self.model_type == "anthropic":
-                response = self.client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=2000,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                content = response.content[0].text
-            else:  # openai GPT
-                response = self.client.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=2000
-                )
-                content = response.choices[0].message.content
-
-            analysis = json.loads(_extract_json(content))
-            return analysis
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1500,
+            )
+            content = response.choices[0].message.content
+            # Nettoyage si nécessaire
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            return json.loads(content)
         except Exception as e:
-            st.error(f"Erreur IA analyze_conversation: {e}")
+            print(f"Erreur d'analyse IA: {e}")
             return self._mock_analysis()
 
     def suggest_conversation_strategy(self, contact_info: Dict, goal: str) -> Dict:
         """Suggère une stratégie de conversation"""
-        if not self.client:
+        if not self.api_key or not openai:
             return self._mock_strategy()
 
         prompt = f"""
@@ -128,176 +83,96 @@ Contexte du contact:
 - Domaine: {contact_info.get('domain')}
 - Sujets précédents: {contact_info.get('topics')}
 
-Fournis un JSON:
-1. "opening"
-2. "key_topics"
-3. "questions"
-4. "value_propositions"
-5. "objections"
-6. "closing"
-7. "follow_up"
-Réponds uniquement avec JSON.
+Fournis au format JSON:
+1. "opening": Phrase d'ouverture suggérée
+2. "key_topics": 3-5 sujets à aborder
+3. "questions": Questions pertinentes à poser
+4. "value_propositions": Propositions de valeur à mettre en avant
+5. "objections": Objections potentielles et réponses
+6. "closing": Phrase de conclusion
+7. "follow_up": Actions de suivi recommandées
+
+Réponds uniquement avec le JSON.
 """
-
         try:
-            if self.model_type == "anthropic":
-                response = self.client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=1500,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                content = response.content[0].text
-            else:
-                response = self.client.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=1500
-                )
-                content = response.choices[0].message.content
-
-            return json.loads(_extract_json(content))
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1200,
+            )
+            content = response.choices[0].message.content
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            return json.loads(content)
         except Exception as e:
-            st.error(f"Erreur IA suggest_conversation_strategy: {e}")
+            print(f"Erreur de génération de stratégie: {e}")
             return self._mock_strategy()
 
-    def extract_action_items(self, conversation_text: str) -> List[Dict]:
-        """Extrait les actions à réaliser d'une conversation"""
-        if not self.client:
-            return self._mock_actions()
-
-        prompt = f"""
-Extrais toutes les actions à réaliser de cette conversation:
-
-{conversation_text}
-
-Pour chaque action, fournis un JSON avec:
-- "action", "responsible", "deadline", "priority", "status"
-Réponds uniquement avec un array JSON.
-"""
-
-        try:
-            if self.model_type == "anthropic":
-                response = self.client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=1000,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                content = response.content[0].text
-            else:
-                response = self.client.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=1000
-                )
-                content = response.choices[0].message.content
-
-            return json.loads(_extract_json(content))
-        except Exception as e:
-            st.error(f"Erreur IA extract_action_items: {e}")
-            return self._mock_actions()
-
-    def generate_meeting_summary(self, conversation_text: str, contact_name: str) -> str:
-        """Génère un résumé professionnel de réunion"""
-        if not self.client:
-            return self._mock_summary(contact_name)
-
-        prompt = f"""
-Crée un résumé professionnel de cette conversation avec {contact_name}:
-
-{conversation_text}
-
-Inclure:
-1. Contexte de la rencontre
-2. Principaux sujets
-3. Décisions
-4. Actions convenues
-5. Prochaines étapes
-
-Format: texte structuré professionnel.
-"""
-
-        try:
-            if self.model_type == "anthropic":
-                response = self.client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=1000,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                content = response.content[0].text
-            else:
-                response = self.client.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=1000
-                )
-                content = response.choices[0].message.content
-
-            return content
-        except Exception as e:
-            st.error(f"Erreur IA generate_meeting_summary: {e}")
-            return self._mock_summary(contact_name)
-
-    # -----------------------------------
-    # Méthodes mock pour fonctionnement offline
-    # -----------------------------------
-
+    # -----------------------------
+    # Méthodes mock pour le mode sans API
+    # -----------------------------
     def _mock_analysis(self) -> Dict:
         return {
-            "key_points": ["Discussion sur opportunités de collaboration", "Échange d'expertise", "Planification prochaines étapes"],
-            "opportunities": ["Projet commun potentiel", "Partage de réseau"],
+            "key_points": [
+                "Discussion sur opportunités de collaboration",
+                "Échange d'expertise",
+                "Planification de prochaines étapes"
+            ],
+            "opportunities": [
+                "Projet commun potentiel",
+                "Partage de réseau"
+            ],
             "cooperation_model": "Partenariat stratégique",
             "credibility_score": 8,
             "usefulness_score": 7,
             "success_probability": 75,
             "priority_level": "medium",
-            "next_actions": ["Planifier un appel", "Partager documents", "Introduire contacts clés"],
+            "next_actions": [
+                "Planifier un appel de suivi",
+                "Partager documents pertinents",
+                "Introduire aux contacts clés"
+            ],
             "red_flags": [],
-            "strengths": ["Communication claire", "Intérêts alignés", "Compétences complémentaires"]
+            "strengths": [
+                "Communication claire",
+                "Intérêts alignés",
+                "Compétences complémentaires"
+            ]
         }
 
     def _mock_strategy(self) -> Dict:
         return {
-            "opening": "Ravi de reprendre contact...",
-            "key_topics": ["Avancement projets", "Nouvelles opportunités", "Mise à jour secteur"],
-            "questions": ["Défis actuels?", "Comment puis-je aider?", "Priorités prochains mois?"],
-            "value_propositions": ["Expertise complémentaire", "Réseau étendu", "Expérience"],
-            "objections": {"Manque de temps": "Proposer format court", "Budget limité": "Commencer exploratoire"},
-            "closing": "Excellent échange! Planifions prochain point",
-            "follow_up": ["Envoyer résumé", "Partager ressources", "Calendrier RDV"]
+            "opening": "Ravi de reprendre contact. J'ai pensé à notre dernière discussion...",
+            "key_topics": [
+                "État d'avancement des projets",
+                "Nouvelles opportunités de collaboration",
+                "Mise à jour sur le secteur"
+            ],
+            "questions": [
+                "Quels sont vos principaux défis?",
+                "Comment puis-je vous aider?",
+                "Quelles sont vos priorités?"
+            ],
+            "value_propositions": [
+                "Expertise complémentaire",
+                "Réseau étendu",
+                "Expérience sectorielle"
+            ],
+            "objections": {
+                "Manque de temps": "Proposer format court",
+                "Budget limité": "Commencer par collaboration exploratoire"
+            },
+            "closing": "Excellent échange! Planifions notre prochain point dans 2 semaines?",
+            "follow_up": [
+                "Envoyer résumé de la conversation",
+                "Partager ressources",
+                "Calendrier RDV de suivi"
+            ]
         }
 
-    def _mock_actions(self) -> List[Dict]:
-        return [
-            {"action": "Envoyer présentation", "responsible": "user", "deadline": "3 jours", "priority": "high", "status": "pending"},
-            {"action": "Organiser réunion", "responsible": "both", "deadline": "1 semaine", "priority": "medium", "status": "pending"}
-        ]
-
-    def _mock_summary(self, contact_name: str) -> str:
-        return f"""
-Résumé de la Conversation avec {contact_name}
-
-**Contexte:**
-Réunion exploratoire pour discuter d'opportunités de collaboration.
-
-**Sujets Principaux:**
-- Présentation des activités respectives
-- Identification synergies potentielles
-- Discussion défis du secteur
-
-**Décisions Prises:**
-- Poursuivre échanges réguliers
-- Explorer opportunités projet commun
-
-**Actions Convenues:**
-- Partage documentation
-- Planification prochain point
-
-**Prochaines Étapes:**
-Maintenir dynamique d'échange et concrétiser pistes identifiées.
-"""
-
-# -----------------------------------
-# Helper pour obtenir le service IA
-# -----------------------------------
-def get_ai_service(user_id: Optional[str] = None, model_type: str = "anthropic") -> AIService:
-    return AIService(user_id=user_id, model_type=model_type)
+# -----------------------------
+# Helper
+# -----------------------------
+def get_ai_service() -> AIService:
+    """Retourne une instance du service IA"""
+    return AIService()
