@@ -1,19 +1,26 @@
 """
 Collabo - Application de Networking Intelligent
-Version Multi-utilisateur + IA
-app/main.py
+streamlit_app.py
 """
 
-import streamlit as st
+# ------------------------------
+# Imports Python natifs
+# ------------------------------
+import os
 import json
 from datetime import datetime
 from pathlib import Path
 
-from services.ai_service import get_ai_service
+# ------------------------------
+# Imports tiers
+# ------------------------------
+import streamlit as st
+from cryptography.fernet import Fernet
+from services.ai_service import AIService
 
-# -----------------------------------
-# Configuration page
-# -----------------------------------
+# ------------------------------
+# Configuration de la page (OBLIGATOIRE en tout premier)
+# ------------------------------
 st.set_page_config(
     page_title="Collabo - Networking Intelligent",
     page_icon="🤝",
@@ -21,187 +28,221 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# -----------------------------------
-# Data storage
-# -----------------------------------
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(exist_ok=True)
+# ------------------------------
+# CSS minimal pour style
+# ------------------------------
+st.markdown("""
+<style>
+    .stApp { max-width: 1400px; margin: 0 auto; }
+    .contact-card { border:1px solid #E5E9F0; border-radius:10px; padding:15px; margin:5px 0; }
+</style>
+""", unsafe_allow_html=True)
 
-CONTACTS_FILE = DATA_DIR / "contacts.json"
-CONVERSATIONS_FILE = DATA_DIR / "conversations.json"
+# ------------------------------
+# Services : chiffrement et stockage
+# ------------------------------
+class EncryptionService:
+    @staticmethod
+    def get_key():
+        key_file = Path("data/.key")
+        key_file.parent.mkdir(exist_ok=True)
+        if key_file.exists():
+            return key_file.read_bytes()
+        key = Fernet.generate_key()
+        key_file.write_bytes(key)
+        return key
 
-def load_json(file_path, default):
-    if file_path.exists():
-        return json.loads(file_path.read_text())
-    return default
+    @staticmethod
+    def encrypt_data(data: str) -> str:
+        f = Fernet(EncryptionService.get_key())
+        return f.encrypt(data.encode()).decode()
 
-def save_json(file_path, data):
-    file_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    @staticmethod
+    def decrypt_data(encrypted_data: str) -> str:
+        f = Fernet(EncryptionService.get_key())
+        return f.decrypt(encrypted_data.encode()).decode()
 
-# Initialisation session
+
+class StorageService:
+    DATA_DIR = Path("data")
+
+    @classmethod
+    def save_contacts(cls, contacts):
+        cls.DATA_DIR.mkdir(exist_ok=True)
+        data = json.dumps(contacts, ensure_ascii=False, indent=2)
+        encrypted = EncryptionService.encrypt_data(data)
+        (cls.DATA_DIR / "contacts.enc").write_text(encrypted)
+
+    @classmethod
+    def load_contacts(cls):
+        file_path = cls.DATA_DIR / "contacts.enc"
+        if file_path.exists():
+            encrypted = file_path.read_text()
+            decrypted = EncryptionService.decrypt_data(encrypted)
+            return json.loads(decrypted)
+        return []
+
+    @classmethod
+    def save_conversations(cls, conversations):
+        cls.DATA_DIR.mkdir(exist_ok=True)
+        data = json.dumps(conversations, ensure_ascii=False, indent=2)
+        encrypted = EncryptionService.encrypt_data(data)
+        (cls.DATA_DIR / "conversations.enc").write_text(encrypted)
+
+    @classmethod
+    def load_conversations(cls):
+        file_path = cls.DATA_DIR / "conversations.enc"
+        if file_path.exists():
+            encrypted = file_path.read_text()
+            decrypted = EncryptionService.decrypt_data(encrypted)
+            return json.loads(decrypted)
+        return {}
+
+# ------------------------------
+# Initialisation multi-utilisateur
+# ------------------------------
+if 'current_user' not in st.session_state:
+    st.session_state.current_user = None
+
+if 'users' not in st.session_state:
+    st.session_state.users = ["Alice", "Bob", "Charlie"]  # Exemple simple multi-user
+
 if 'contacts' not in st.session_state:
-    st.session_state.contacts = load_json(CONTACTS_FILE, [])
+    st.session_state.contacts = StorageService.load_contacts()
 
 if 'conversations' not in st.session_state:
-    st.session_state.conversations = load_json(CONVERSATIONS_FILE, {})
+    st.session_state.conversations = StorageService.load_conversations()
 
 if 'current_contact' not in st.session_state:
     st.session_state.current_contact = None
 
-if 'current_user' not in st.session_state:
-    st.session_state.current_user = "user_1"  # par défaut, gestion multi-user
+# ------------------------------
+# Sélection de l'utilisateur
+# ------------------------------
+st.sidebar.markdown("### 👤 Sélection Utilisateur")
+st.session_state.current_user = st.sidebar.selectbox(
+    "Utilisateur actif",
+    st.session_state.users
+)
 
-# -----------------------------------
-# Sidebar: navigation + utilisateur
-# -----------------------------------
-with st.sidebar:
-    st.markdown("### 👤 Utilisateur")
-    user_id = st.text_input("ID Utilisateur", value=st.session_state.current_user)
-    st.session_state.current_user = user_id
+# ------------------------------
+# Navigation principale
+# ------------------------------
+st.sidebar.markdown("### 📱 Navigation")
+page = st.sidebar.radio(
+    "",
+    ["🏠 Dashboard", "👥 Contacts", "💬 Conversations", "📊 Analytics", "⚙️ Paramètres"],
+    label_visibility="collapsed"
+)
 
-    st.markdown("### 📱 Navigation")
-    page = st.radio(
-        "",
-        ["🏠 Dashboard", "👥 Contacts", "💬 Conversations", "📊 Analytics", "⚙️ Paramètres"],
-        label_visibility="collapsed"
-    )
+# ------------------------------
+# Instance AI Service
+# ------------------------------
+ai_service = AIService()
 
-# -----------------------------------
-# Header
-# -----------------------------------
-st.markdown("""
-<div style="background: linear-gradient(135deg, #2E3440 0%, #5E81AC 100%);
-            color:white; padding:20px; border-radius:12px;">
-    <h1>🤝 Collabo</h1>
-    <p>Plateforme de Networking Intelligent & Sécurisée</p>
-</div>
-""", unsafe_allow_html=True)
-
-# -----------------------------------
-# AI Service Instance
-# -----------------------------------
-ai_service = get_ai_service(user_id=st.session_state.current_user, model_type="anthropic")
-
-# -----------------------------------
+# ------------------------------
 # Dashboard
-# -----------------------------------
+# ------------------------------
 if page == "🏠 Dashboard":
-    st.markdown("## 📊 Tableau de Bord")
-    st.markdown(f"- Nombre de contacts : {len(st.session_state.contacts)}")
-    st.markdown(f"- Nombre de conversations : {len(st.session_state.conversations)}")
+    st.markdown(f"# 🤝 Collabo - Tableau de Bord ({st.session_state.current_user})")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Contacts Totaux", len(st.session_state.contacts))
+    with col2:
+        st.metric("Conversations", len(st.session_state.conversations))
 
-# -----------------------------------
+# ------------------------------
 # Contacts
-# -----------------------------------
+# ------------------------------
 elif page == "👥 Contacts":
     st.markdown("## 👥 Gestion des Contacts")
-    tab1, tab2 = st.tabs(["📋 Liste des Contacts", "➕ Ajouter un Contact"])
-
+    
+    tab1, tab2 = st.tabs(["Liste des Contacts", "➕ Ajouter Contact"])
+    
     with tab1:
-        for idx, contact in enumerate(st.session_state.contacts):
-            with st.expander(f"{contact['name']} ({contact.get('domain', 'N/A')})"):
-                st.write(f"📧 {contact.get('email', '')} | 📱 {contact.get('phone', '')}")
-                st.write(f"Occasion: {contact.get('occasion', '')}")
-                st.write(f"Topics: {contact.get('topics', '')}")
-                if st.button("🗑️ Supprimer", key=f"del_{idx}"):
-                    st.session_state.contacts.pop(idx)
-                    save_json(CONTACTS_FILE, st.session_state.contacts)
-                    st.experimental_rerun()
-
+        if st.session_state.contacts:
+            for idx, contact in enumerate(st.session_state.contacts):
+                with st.expander(f"{contact['name']} ({contact.get('domain','N/A')})"):
+                    st.write(contact)
+                    if st.button("💬 Chat", key=f"chat_{idx}"):
+                        st.session_state.current_contact = contact
+                        st.rerun()
+        else:
+            st.info("Aucun contact enregistré")
+    
     with tab2:
-        with st.form("add_contact"):
+        with st.form("new_contact"):
             name = st.text_input("Nom complet*")
-            email = st.text_input("Email")
-            phone = st.text_input("Téléphone")
             domain = st.text_input("Domaine*")
-            occasion = st.text_input("Occasion*")
-            topics = st.text_area("Sujets abordés*")
+            email = st.text_input("Email")
             priority = st.selectbox("Priorité", ["low", "medium", "high"])
-            submitted = st.form_submit_button("✅ Ajouter")
+            submitted = st.form_submit_button("Ajouter")
+            if submitted and name and domain:
+                new_contact = {
+                    'id': datetime.now().isoformat(),
+                    'name': name,
+                    'domain': domain,
+                    'email': email,
+                    'priority': priority,
+                    'created_by': st.session_state.current_user
+                }
+                st.session_state.contacts.append(new_contact)
+                StorageService.save_contacts(st.session_state.contacts)
+                st.success("Contact ajouté !")
+                st.rerun()
 
-            if submitted:
-                if name and domain and occasion and topics:
-                    new_contact = {
-                        "id": datetime.now().isoformat(),
-                        "name": name,
-                        "email": email,
-                        "phone": phone,
-                        "domain": domain,
-                        "occasion": occasion,
-                        "topics": topics,
-                        "priority": priority,
-                        "created_at": datetime.now().isoformat()
-                    }
-                    st.session_state.contacts.append(new_contact)
-                    save_json(CONTACTS_FILE, st.session_state.contacts)
-                    st.success("Contact ajouté!")
-                    st.experimental_rerun()
-                else:
-                    st.error("Veuillez remplir tous les champs obligatoires (*)")
-
-# -----------------------------------
+# ------------------------------
 # Conversations
-# -----------------------------------
+# ------------------------------
 elif page == "💬 Conversations":
     st.markdown("## 💬 Messagerie Sécurisée")
+    
+    if st.session_state.contacts:
+        contact_names = [c['name'] for c in st.session_state.contacts]
+        selected_name = st.selectbox("Sélectionner un contact", contact_names)
+        contact = next(c for c in st.session_state.contacts if c['name'] == selected_name)
+        
+        conv_key = f"{st.session_state.current_user}_{contact['id']}"
+        if conv_key not in st.session_state.conversations:
+            st.session_state.conversations[conv_key] = []
+        
+        # Affichage messages
+        for msg in st.session_state.conversations[conv_key]:
+            align = "🟢" if msg['sender'] == st.session_state.current_user else "⚪"
+            st.write(f"{align} {msg['sender']}: {msg['text']} ({msg['timestamp']})")
+        
+        # Envoyer message
+        with st.form("send_message", clear_on_submit=True):
+            message = st.text_area("Votre message", height=100)
+            send = st.form_submit_button("Envoyer")
+            if send and message:
+                new_msg = {
+                    'sender': st.session_state.current_user,
+                    'text': message,
+                    'timestamp': datetime.now().strftime("%H:%M")
+                }
+                st.session_state.conversations[conv_key].append(new_msg)
+                StorageService.save_conversations(st.session_state.conversations)
+                
+                # Analyse IA (optionnel)
+                analysis = ai_service.analyze_conversation(
+                    "\n".join([m['text'] for m in st.session_state.conversations[conv_key]]),
+                    contact
+                )
+                st.json(analysis)
+                st.rerun()
 
-    if not st.session_state.contacts:
-        st.info("Ajoutez des contacts pour commencer")
-    else:
-        col1, col2 = st.columns([1, 3])
-
-        with col1:
-            contact_names = [c['name'] for c in st.session_state.contacts]
-            selected_contact_name = st.radio("Contacts", contact_names)
-            contact = next(c for c in st.session_state.contacts if c['name'] == selected_contact_name)
-            st.session_state.current_contact = contact
-
-        with col2:
-            contact_id = contact['id']
-            if contact_id not in st.session_state.conversations:
-                st.session_state.conversations[contact_id] = []
-
-            # Affichage des messages
-            for msg in st.session_state.conversations[contact_id]:
-                align = "👉" if msg['sender'] == 'user' else "💬"
-                st.write(f"{align} {msg['text']} ({msg['timestamp']})")
-
-            # Envoi message
-            with st.form("send_msg", clear_on_submit=True):
-                message = st.text_area("Votre message", height=100)
-                if st.form_submit_button("📤 Envoyer") and message:
-                    msg_obj = {
-                        "sender": "user",
-                        "text": message,
-                        "timestamp": datetime.now().strftime("%H:%M")
-                    }
-                    st.session_state.conversations[contact_id].append(msg_obj)
-                    save_json(CONVERSATIONS_FILE, st.session_state.conversations)
-                    st.experimental_rerun()
-
-            # Bouton IA pour analyser la conversation
-            if st.button("🤖 Analyser la conversation avec IA"):
-                conversation_text = "\n".join([m['text'] for m in st.session_state.conversations[contact_id]])
-                with st.spinner("Analyse en cours..."):
-                    analysis = ai_service.analyze_conversation(conversation_text, contact)
-                    st.markdown("### 📌 Insights IA")
-                    st.json(analysis)
-
-                    st.markdown("### 📝 Résumé de réunion")
-                    summary = ai_service.generate_meeting_summary(conversation_text, contact['name'])
-                    st.text(summary)
-
-# -----------------------------------
+# ------------------------------
 # Analytics
-# -----------------------------------
+# ------------------------------
 elif page == "📊 Analytics":
     st.markdown("## 📊 Analytics")
-    st.info("Fonctionnalités d'analyse multi-utilisateur en préparation")
-
-# -----------------------------------
+    st.write("Analyse multi-utilisateur disponible")
+    
+# ------------------------------
 # Paramètres
-# -----------------------------------
+# ------------------------------
 elif page == "⚙️ Paramètres":
     st.markdown("## ⚙️ Paramètres")
-    st.markdown(f"- Utilisateur actif : {st.session_state.current_user}")
-    st.markdown("- Chiffrement des données locales et stockage sécurisé (bientôt intégré)")
+    st.write("Configuration générale et sécurité")
