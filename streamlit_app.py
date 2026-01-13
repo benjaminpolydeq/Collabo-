@@ -16,7 +16,7 @@ from pathlib import Path
 # ------------------------------
 import streamlit as st
 from cryptography.fernet import Fernet
-from services import AIService
+from .services import AIService
 
 # ------------------------------
 # Configuration de la page (OBLIGATOIRE en tout premier)
