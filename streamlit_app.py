@@ -1,119 +1,115 @@
-"""
-Collabo - Application de Networking Intelligent
-app/streamlit_app.py
-"""
+# streamlit_app.py (à la racine du dépôt)
 
-import streamlit as st
-import json
-from datetime import datetime
-from pathlib import Path
 import os
+import json
+import streamlit as st
+from dotenv import load_dotenv
+import openai
 
-# Import AI Service depuis la racine
-from ai_service import AIService
+# ==============================
+# Charger les variables d'environnement
+# ==============================
+load_dotenv()  # charge le fichier .env
 
-# Configuration de la page
-st.set_page_config(
-    page_title="Collabo - Networking Intelligent",
-    page_icon="🤝",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+AI_ANALYSIS_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
 
-# CSS personnalisé (reste inchangé, je l’ai conservé pour la lisibilité)
-st.markdown("""
-<style>
-    :root { --primary-color: #2E3440; --secondary-color: #5E81AC; --accent-color: #88C0D0; --background-color: #ECEFF4; --card-background: #FFFFFF; --text-color: #2E3440; --success-color: #A3BE8C; --warning-color: #EBCB8B; --danger-color: #BF616A; }
-    .main { background-color: var(--background-color); }
-    .stApp { max-width: 1400px; margin: 0 auto; }
-    .professional-card { background: var(--card-background); border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; border-left: 4px solid var(--secondary-color); }
-    .app-header { background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-    .app-title { font-size: 2.5rem; font-weight: 700; margin-bottom: 8px; }
-    .app-subtitle { font-size: 1.1rem; opacity: 0.95; }
-    .status-badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; margin: 4px; }
-    .badge-high { background-color: #BF616A20; color: #BF616A; }
-    .badge-medium { background-color: #EBCB8B20; color: #D08770; }
-    .badge-low { background-color: #A3BE8C20; color: #A3BE8C; }
-    .contact-card { background: white; border-radius: 10px; padding: 20px; margin: 10px 0; border: 1px solid #E5E9F0; transition: all 0.3s ease; }
-    .contact-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); }
-    .contact-name { font-size: 1.3rem; font-weight: 600; color: var(--primary-color); margin-bottom: 8px; }
-    .contact-detail { font-size: 0.95rem; color: #4C566A; margin: 4px 0; }
-    .stButton>button { border-radius: 8px; font-weight: 500; transition: all 0.3s ease; }
-    .message-bubble { padding: 12px 16px; border-radius: 12px; margin: 8px 0; max-width: 70%; }
-    .message-sent { background: linear-gradient(135deg, #5E81AC 0%, #81A1C1 100%); color: white; margin-left: auto; }
-    .message-received { background: #ECEFF4; color: var(--text-color); }
-    .metric-card { background: white; border-radius: 10px; padding: 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-    .metric-value { font-size: 2.5rem; font-weight: 700; color: var(--secondary-color); }
-    .metric-label { font-size: 0.95rem; color: #4C566A; margin-top: 8px; }
-    .css-1d391kg { background-color: var(--primary-color); }
-    .alert-info { background-color: #88C0D020; border-left: 4px solid #88C0D0; padding: 16px; border-radius: 8px; margin: 16px 0; }
-</style>
-""", unsafe_allow_html=True)
+# Configurer l’API OpenAI
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
 
-# Services
-ai_service = AIService()  # instance de ton service IA
+# ==============================
+# Service IA
+# ==============================
+class AIService:
+    """Service d'analyse IA des conversations"""
 
-# Gestion du stockage (local JSON chiffré)
-DATA_DIR = Path("./data")
-DATA_DIR.mkdir(exist_ok=True)
+    def __init__(self, api_key=None):
+        self.api_key = api_key or OPENAI_API_KEY
 
-CONTACTS_FILE = DATA_DIR / "contacts.json"
-CONVERSATIONS_FILE = DATA_DIR / "conversations.json"
+    def _mock_analysis(self):
+        return {
+            "key_points": [
+                "Discussion sur opportunités de collaboration",
+                "Échange d'expertise",
+                "Planification des prochaines étapes"
+            ],
+            "opportunities": ["Projet commun potentiel", "Partage de réseau"],
+            "cooperation_model": "Partenariat stratégique basé sur expertise",
+            "credibility_score": 8,
+            "usefulness_score": 7,
+            "success_probability": 75,
+            "priority_level": "medium",
+            "next_actions": [
+                "Planifier un appel de suivi",
+                "Partager documents pertinents",
+                "Introduire aux contacts clés"
+            ],
+            "red_flags": [],
+            "strengths": ["Communication claire", "Intérêts alignés", "Compétences complémentaires"]
+        }
 
-def load_json(file_path):
-    if file_path.exists():
-        return json.loads(file_path.read_text())
-    return [] if "contacts" in str(file_path) else {}
+    def analyze_conversation(self, conversation_text: str, contact_name: str):
+        if not AI_ANALYSIS_ENABLED or not self.api_key:
+            return self._mock_analysis()
 
-def save_json(file_path, data):
-    file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        prompt = f"""
+Analyse cette conversation professionnelle avec {contact_name}.
 
-# Initialisation session state
-if "contacts" not in st.session_state:
-    st.session_state.contacts = load_json(CONTACTS_FILE)
-if "conversations" not in st.session_state:
-    st.session_state.conversations = load_json(CONVERSATIONS_FILE)
-if "current_contact" not in st.session_state:
-    st.session_state.current_contact = None
+Conversation:
+{conversation_text}
 
-# ---------------------
-# UI Principal
-# ---------------------
-st.markdown("""
-<div class="app-header">
-    <div class="app-title">🤝 Collabo</div>
-    <div class="app-subtitle">Plateforme de Networking Intelligent & Sécurisée</div>
-</div>
-""", unsafe_allow_html=True)
+Fournis une analyse structurée en JSON avec:
+1. key_points: 3-5 points clés
+2. opportunities: opportunités identifiées
+3. cooperation_model: modèle de coopération
+4. credibility_score: 0-10
+5. usefulness_score: 0-10
+6. success_probability: 0-100%
+7. priority_level: low/medium/high
+8. next_actions: 3 prochaines actions
+9. red_flags: signaux d'alerte
+10. strengths: points forts
 
-# Sidebar
-with st.sidebar:
-    st.markdown("### 📱 Navigation")
-    page = st.radio(
-        "",
-        ["🏠 Dashboard", "👥 Contacts", "💬 Conversations", "📊 Analytics", "⚙️ Paramètres"],
-        label_visibility="collapsed"
-    )
+Réponds uniquement en JSON, sans texte additionnel.
+"""
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1500
+            )
+            content = response.choices[0].message.content.strip()
+            
+            # Nettoyer si le JSON est dans un code block
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
 
-# ---------------------
-# Pages
-# ---------------------
-if page == "🏠 Dashboard":
-    st.markdown("## 📊 Tableau de Bord")
-    st.info("Dashboard en construction...")
+            return json.loads(content)
+        except Exception as e:
+            print(f"Erreur API OpenAI: {e}")
+            return self._mock_analysis()
 
-elif page == "👥 Contacts":
-    st.markdown("## 👥 Gestion des Contacts")
-    st.info("Contacts en construction...")
+# ==============================
+# Streamlit Interface
+# ==============================
+st.set_page_config(page_title="Collabo", page_icon="🤝", layout="wide")
+st.title("🤝 Collabo - AI Conversation Analysis")
 
-elif page == "💬 Conversations":
-    st.markdown("## 💬 Messagerie Sécurisée")
-    st.info("Messagerie en construction...")
+# Initialiser le service IA
+ai = AIService()
 
-elif page == "📊 Analytics":
-    st.markdown("## 📊 Analyses & Insights")
-    st.info("Analytics en construction...")
+# Input utilisateur
+contact_name = st.text_input("Nom du contact")
+conversation_text = st.text_area("Texte de la conversation")
 
-elif page == "⚙️ Paramètres":
-    st.markdown("## ⚙️ Paramètres")
-    st.info("Paramètres en construction...")
+if st.button("Analyser la conversation"):
+    if conversation_text.strip() == "" or contact_name.strip() == "":
+        st.warning("Veuillez entrer le nom du contact et le texte de la conversation.")
+    else:
+        with st.spinner("Analyse en cours..."):
+            result = ai.analyze_conversation(conversation_text, contact_name)
+        st.success("Analyse terminée !")
+        st.json(result)
