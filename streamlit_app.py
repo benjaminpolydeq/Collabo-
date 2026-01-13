@@ -584,5 +584,4 @@ elif page == "⚙️ Paramètres":
     
     st.markdown("### 🔒 Sécurité & Confidentialité")
     
-    st.markdown("""
-    <div class="profes
+    st.markdown("""     <div class="professional-card">         <h4>🤝 Collabo v1.0.0</h4>         <p>Application de networking professionnel intelligent et sécurisée</p>         <br>         <p><strong>Développé avec :</strong></p>         <p>• Streamlit - Interface utilisateur</p>         <p>• Cryptography - Chiffrement AES-256</p>         <p>• Anthropic Claude - Intelligence artificielle</p>         <br>         <p><strong>Licence :</strong> MIT License</p>         <p><strong>Support :</strong> support@collabo-app.com</p>         <p><strong>GitHub :</strong> github.com/votre-username/collabo</p>     </div>     """, unsafe_allow_html=True)  # Footer st.markdown("---") st.markdown(""" <div style="text-align: center; color: #666; padding: 20px;">     🤝 <strong>Collabo v1.0</strong> - Votre networking intelligent et sécurisé<br>     🔒 100% Local | 🔐 Chiffré | 🚀 Open Source </div> """, unsafe_allow_html=True)
