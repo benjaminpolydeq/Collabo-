@@ -1,63 +1,45 @@
+# ai_service.py
 import os
 import json
 import openai
-from dotenv import load_dotenv
-
-load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AI_ANALYSIS_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
-AI_MODEL = os.getenv("AI_MODEL", "gpt-4")
-AI_MAX_TOKENS = int(os.getenv("AI_MAX_TOKENS", 2000))
 
-openai.api_key = OPENAI_API_KEY
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
 
 class AIService:
-    """Service IA pour analyser les conversations et générer stratégie"""
 
-    def analyze_conversation(self, text, contact_name):
+    def analyze_conversation(self, conversation_text: str, contact_info: dict):
         if not AI_ANALYSIS_ENABLED or not OPENAI_API_KEY:
             return self._mock_analysis()
-
         prompt = f"""
-Analyse cette conversation professionnelle avec {contact_name}:
-{text}
+Analyse la conversation avec {contact_info.get('name')}:
+{conversation_text}
 
-Retourne un JSON avec:
-- key_points
-- opportunities
-- cooperation_model
-- credibility_score
-- usefulness_score
-- success_probability
-- priority_level
-- next_actions
-- red_flags
-- strengths
+Réponds uniquement en JSON avec:
+- key_points, opportunities, cooperation_model
+- credibility_score, usefulness_score, success_probability
+- priority_level, next_actions, red_flags, strengths
 """
         try:
             response = openai.ChatCompletion.create(
-                model=AI_MODEL,
+                model="gpt-4",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=AI_MAX_TOKENS
+                max_tokens=1500
             )
             content = response.choices[0].message.content.strip()
-            if content.startswith("{"):
-                return json.loads(content)
-            return {"raw": content}
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            return json.loads(content)
         except Exception as e:
-            return {"error": str(e)}
+            print(f"Erreur IA: {e}")
+            return self._mock_analysis()
 
     def _mock_analysis(self):
-        return {
-            "key_points": ["Discussion sur opportunités", "Échange d'expertise"],
-            "opportunities": ["Projet commun potentiel"],
-            "cooperation_model": "Partenariat stratégique",
-            "credibility_score": 8,
-            "usefulness_score": 7,
-            "success_probability": 75,
-            "priority_level": "medium",
-            "next_actions": ["Planifier suivi", "Partager documents"],
-            "red_flags": [],
-            "strengths": ["Communication claire"]
-        }
+        return {"key_points": ["Discussion"], "opportunities": [], "cooperation_model": "",
+                "credibility_score": 7, "usefulness_score": 7, "success_probability": 70,
+                "priority_level": "medium", "next_actions": [], "red_flags": [], "strengths": []}
