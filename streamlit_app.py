@@ -1,248 +1,179 @@
 """
-Collabo - Application de Networking Intelligent
-streamlit_app.py
+Service d'Intelligence Artificielle pour Collabo
+app/services/ai_service.py
 """
 
-# ------------------------------
-# Imports Python natifs
-# ------------------------------
 import os
 import json
-from datetime import datetime
-from pathlib import Path
+from typing import Dict, List, Optional
+import openai
+from dotenv import load_dotenv
 
-# ------------------------------
-# Imports tiers
-# ------------------------------
-import streamlit as st
-from cryptography.fernet import Fernet
-from .services import AIService
+# Charger les variables d'environnement depuis .env
+load_dotenv()
 
-# ------------------------------
-# Configuration de la page (OBLIGATOIRE en tout premier)
-# ------------------------------
-st.set_page_config(
-    page_title="Collabo - Networking Intelligent",
-    page_icon="🤝",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# ------------------------------
-# CSS minimal pour style
-# ------------------------------
-st.markdown("""
-<style>
-    .stApp { max-width: 1400px; margin: 0 auto; }
-    .contact-card { border:1px solid #E5E9F0; border-radius:10px; padding:15px; margin:5px 0; }
-</style>
-""", unsafe_allow_html=True)
-
-# ------------------------------
-# Services : chiffrement et stockage
-# ------------------------------
-class EncryptionService:
-    @staticmethod
-    def get_key():
-        key_file = Path("data/.key")
-        key_file.parent.mkdir(exist_ok=True)
-        if key_file.exists():
-            return key_file.read_bytes()
-        key = Fernet.generate_key()
-        key_file.write_bytes(key)
-        return key
-
-    @staticmethod
-    def encrypt_data(data: str) -> str:
-        f = Fernet(EncryptionService.get_key())
-        return f.encrypt(data.encode()).decode()
-
-    @staticmethod
-    def decrypt_data(encrypted_data: str) -> str:
-        f = Fernet(EncryptionService.get_key())
-        return f.decrypt(encrypted_data.encode()).decode()
-
-
-class StorageService:
-    DATA_DIR = Path("data")
-
-    @classmethod
-    def save_contacts(cls, contacts):
-        cls.DATA_DIR.mkdir(exist_ok=True)
-        data = json.dumps(contacts, ensure_ascii=False, indent=2)
-        encrypted = EncryptionService.encrypt_data(data)
-        (cls.DATA_DIR / "contacts.enc").write_text(encrypted)
-
-    @classmethod
-    def load_contacts(cls):
-        file_path = cls.DATA_DIR / "contacts.enc"
-        if file_path.exists():
-            encrypted = file_path.read_text()
-            decrypted = EncryptionService.decrypt_data(encrypted)
-            return json.loads(decrypted)
-        return []
-
-    @classmethod
-    def save_conversations(cls, conversations):
-        cls.DATA_DIR.mkdir(exist_ok=True)
-        data = json.dumps(conversations, ensure_ascii=False, indent=2)
-        encrypted = EncryptionService.encrypt_data(data)
-        (cls.DATA_DIR / "conversations.enc").write_text(encrypted)
-
-    @classmethod
-    def load_conversations(cls):
-        file_path = cls.DATA_DIR / "conversations.enc"
-        if file_path.exists():
-            encrypted = file_path.read_text()
-            decrypted = EncryptionService.decrypt_data(encrypted)
-            return json.loads(decrypted)
-        return {}
-
-# ------------------------------
-# Initialisation multi-utilisateur
-# ------------------------------
-if 'current_user' not in st.session_state:
-    st.session_state.current_user = None
-
-if 'users' not in st.session_state:
-    st.session_state.users = ["Alice", "Bob", "Charlie"]  # Exemple simple multi-user
-
-if 'contacts' not in st.session_state:
-    st.session_state.contacts = StorageService.load_contacts()
-
-if 'conversations' not in st.session_state:
-    st.session_state.conversations = StorageService.load_conversations()
-
-if 'current_contact' not in st.session_state:
-    st.session_state.current_contact = None
-
-# ------------------------------
-# Sélection de l'utilisateur
-# ------------------------------
-st.sidebar.markdown("### 👤 Sélection Utilisateur")
-st.session_state.current_user = st.sidebar.selectbox(
-    "Utilisateur actif",
-    st.session_state.users
-)
-
-# ------------------------------
-# Navigation principale
-# ------------------------------
-st.sidebar.markdown("### 📱 Navigation")
-page = st.sidebar.radio(
-    "",
-    ["🏠 Dashboard", "👥 Contacts", "💬 Conversations", "📊 Analytics", "⚙️ Paramètres"],
-    label_visibility="collapsed"
-)
-
-# ------------------------------
-# Instance AI Service
-# ------------------------------
-ai_service = AIService()
-
-# ------------------------------
-# Dashboard
-# ------------------------------
-if page == "🏠 Dashboard":
-    st.markdown(f"# 🤝 Collabo - Tableau de Bord ({st.session_state.current_user})")
+class AIService:
+    """Service d'analyse IA des conversations utilisant OpenAI GPT"""
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Contacts Totaux", len(st.session_state.contacts))
-    with col2:
-        st.metric("Conversations", len(st.session_state.conversations))
-
-# ------------------------------
-# Contacts
-# ------------------------------
-elif page == "👥 Contacts":
-    st.markdown("## 👥 Gestion des Contacts")
-    
-    tab1, tab2 = st.tabs(["Liste des Contacts", "➕ Ajouter Contact"])
-    
-    with tab1:
-        if st.session_state.contacts:
-            for idx, contact in enumerate(st.session_state.contacts):
-                with st.expander(f"{contact['name']} ({contact.get('domain','N/A')})"):
-                    st.write(contact)
-                    if st.button("💬 Chat", key=f"chat_{idx}"):
-                        st.session_state.current_contact = contact
-                        st.rerun()
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if self.api_key:
+            openai.api_key = self.api_key
         else:
-            st.info("Aucun contact enregistré")
+            print("⚠️  Pas de clé OpenAI fournie, utilisation du mode mock.")
     
-    with tab2:
-        with st.form("new_contact"):
-            name = st.text_input("Nom complet*")
-            domain = st.text_input("Domaine*")
-            email = st.text_input("Email")
-            priority = st.selectbox("Priorité", ["low", "medium", "high"])
-            submitted = st.form_submit_button("Ajouter")
-            if submitted and name and domain:
-                new_contact = {
-                    'id': datetime.now().isoformat(),
-                    'name': name,
-                    'domain': domain,
-                    'email': email,
-                    'priority': priority,
-                    'created_by': st.session_state.current_user
-                }
-                st.session_state.contacts.append(new_contact)
-                StorageService.save_contacts(st.session_state.contacts)
-                st.success("Contact ajouté !")
-                st.rerun()
+    def analyze_conversation(self, conversation_text: str, contact_info: Dict) -> Dict:
+        """Analyse une conversation et renvoie des insights structurés"""
+        if not self.api_key:
+            return self._mock_analysis()
+        
+        prompt = f"""
+Analyse cette conversation professionnelle entre un utilisateur et {contact_info.get('name', 'un contact')}.
 
-# ------------------------------
-# Conversations
-# ------------------------------
-elif page == "💬 Conversations":
-    st.markdown("## 💬 Messagerie Sécurisée")
-    
-    if st.session_state.contacts:
-        contact_names = [c['name'] for c in st.session_state.contacts]
-        selected_name = st.selectbox("Sélectionner un contact", contact_names)
-        contact = next(c for c in st.session_state.contacts if c['name'] == selected_name)
-        
-        conv_key = f"{st.session_state.current_user}_{contact['id']}"
-        if conv_key not in st.session_state.conversations:
-            st.session_state.conversations[conv_key] = []
-        
-        # Affichage messages
-        for msg in st.session_state.conversations[conv_key]:
-            align = "🟢" if msg['sender'] == st.session_state.current_user else "⚪"
-            st.write(f"{align} {msg['sender']}: {msg['text']} ({msg['timestamp']})")
-        
-        # Envoyer message
-        with st.form("send_message", clear_on_submit=True):
-            message = st.text_area("Votre message", height=100)
-            send = st.form_submit_button("Envoyer")
-            if send and message:
-                new_msg = {
-                    'sender': st.session_state.current_user,
-                    'text': message,
-                    'timestamp': datetime.now().strftime("%H:%M")
-                }
-                st.session_state.conversations[conv_key].append(new_msg)
-                StorageService.save_conversations(st.session_state.conversations)
-                
-                # Analyse IA (optionnel)
-                analysis = ai_service.analyze_conversation(
-                    "\n".join([m['text'] for m in st.session_state.conversations[conv_key]]),
-                    contact
-                )
-                st.json(analysis)
-                st.rerun()
+Contexte du contact:
+- Nom: {contact_info.get('name')}
+- Domaine: {contact_info.get('domain')}
+- Occasion de rencontre: {contact_info.get('occasion')}
 
-# ------------------------------
-# Analytics
-# ------------------------------
-elif page == "📊 Analytics":
-    st.markdown("## 📊 Analytics")
-    st.write("Analyse multi-utilisateur disponible")
+Conversation:
+{conversation_text}
+
+Fournis une analyse structurée au format JSON avec:
+1. "key_points": Liste des 3-5 points clés de la discussion
+2. "opportunities": Opportunités de collaboration identifiées
+3. "cooperation_model": Modèle de coopération suggéré
+4. "credibility_score": Score de 0-10 sur la crédibilité
+5. "usefulness_score": Score de 0-10 sur l'utilité
+6. "success_probability": Probabilité de succès (0-100%)
+7. "priority_level": Niveau de priorité (low/medium/high)
+8. "next_actions": 3 prochaines actions recommandées
+9. "red_flags": Signaux d'alerte éventuels
+10. "strengths": Points forts de cette relation
+
+Réponds uniquement avec le JSON, sans texte additionnel.
+"""
+        try:
+            response = openai.ChatCompletion.create(
+                model=os.getenv("AI_MODEL", "gpt-4"),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=int(os.getenv("AI_MAX_TOKENS", 2000))
+            )
+            
+            content = response.choices[0].message['content']
+            
+            # Nettoyer le JSON si nécessaire
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            return json.loads(content)
+        except Exception as e:
+            print(f"Erreur d'analyse IA: {e}")
+            return self._mock_analysis()
     
-# ------------------------------
-# Paramètres
-# ------------------------------
-elif page == "⚙️ Paramètres":
-    st.markdown("## ⚙️ Paramètres")
-    st.write("Configuration générale et sécurité")
+    def suggest_conversation_strategy(self, contact_info: Dict, goal: str) -> Dict:
+        """Suggère une stratégie de conversation"""
+        if not self.api_key:
+            return self._mock_strategy()
+        
+        prompt = f"""
+Crée une stratégie de conversation professionnelle pour atteindre cet objectif: {goal}
+
+Contexte du contact:
+- Nom: {contact_info.get('name')}
+- Domaine: {contact_info.get('domain')}
+- Sujets précédents: {contact_info.get('topics')}
+
+Fournis au format JSON:
+1. "opening": Phrase d'ouverture suggérée
+2. "key_topics": 3-5 sujets à aborder
+3. "questions": Questions pertinentes à poser
+4. "value_propositions": Propositions de valeur à mettre en avant
+5. "objections": Objections potentielles et réponses
+6. "closing": Phrase de conclusion
+7. "follow_up": Actions de suivi recommandées
+
+Réponds uniquement avec le JSON.
+"""
+        try:
+            response = openai.ChatCompletion.create(
+                model=os.getenv("AI_MODEL", "gpt-4"),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1500
+            )
+            content = response.choices[0].message['content']
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            return json.loads(content)
+        except Exception as e:
+            print(f"Erreur de génération de stratégie: {e}")
+            return self._mock_strategy()
+    
+    def extract_action_items(self, conversation_text: str) -> List[Dict]:
+        """Extrait les actions à réaliser d'une conversation"""
+        if not self.api_key:
+            return self._mock_actions()
+        
+        prompt = f"""
+Extrais toutes les actions à réaliser de cette conversation:
+
+{conversation_text}
+
+Pour chaque action, fournis un JSON avec:
+- "action": Description de l'action
+- "responsible": Qui doit la faire (user/contact/both)
+- "deadline": Délai suggéré
+- "priority": high/medium/low
+- "status": pending
+
+Réponds avec un array JSON d'actions.
+"""
+        try:
+            response = openai.ChatCompletion.create(
+                model=os.getenv("AI_MODEL", "gpt-4"),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1000
+            )
+            content = response.choices[0].message['content']
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            return json.loads(content)
+        except Exception as e:
+            print(f"Erreur d'extraction d'actions: {e}")
+            return self._mock_actions()
+    
+    # Méthodes mock pour fonctionnement sans API
+    def _mock_analysis(self) -> Dict:
+        return {
+            "key_points": ["Discussion sur opportunités de collaboration"],
+            "opportunities": ["Projet commun potentiel"],
+            "cooperation_model": "Partenariat stratégique",
+            "credibility_score": 8,
+            "usefulness_score": 7,
+            "success_probability": 75,
+            "priority_level": "medium",
+            "next_actions": ["Planifier un appel de suivi"],
+            "red_flags": [],
+            "strengths": ["Communication claire"]
+        }
+    
+    def _mock_strategy(self) -> Dict:
+        return {
+            "opening": "Ravi de reprendre contact...",
+            "key_topics": ["État d'avancement des projets"],
+            "questions": ["Quels sont vos principaux défis?"],
+            "value_propositions": ["Expertise complémentaire"],
+            "objections": {"Manque de temps": "Proposer format court"},
+            "closing": "Planifions notre prochain point.",
+            "follow_up": ["Envoyer résumé de la conversation"]
+        }
+    
+    def _mock_actions(self) -> List[Dict]:
+        return [
+            {"action": "Envoyer présentation", "responsible": "user", "deadline": "3 jours", "priority": "high", "status": "pending"}
+        ]
+
+# Helper pour obtenir le service
+def get_ai_service() -> AIService:
+    return AIService()
