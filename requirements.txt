@@ -1,9 +1,23 @@
-streamlit>=1.24.1
-cryptography>=41.0.0
-pandas>=2.1.0
-numpy>=1.26.0
+# Interface
+streamlit>=1.27.0
+
+# Gestion des variables d'environnement
+python-dotenv>=1.0.0
+
+# API OpenAI
+openai>=1.0.0
+
+# Pour manipuler les dates et heures (si besoin)
+pytz>=2023.3
+
+# JSON & utilitaires
+jsonschema>=4.19.0
+
+# Optionnel pour notifications / rafraîchissement
+streamlit-autorefresh>=0.1.3
+
+# Pour le déploiement léger
 requests>=2.31.0
-python-dotenv>=1.1.1
-openai>=1.29.0
-pydantic==2.6.2
-watchdog==3.0.0
+
+# Pour sécuriser les mots de passe
+bcrypt>=4.0.1
