@@ -1,61 +1,47 @@
-# streamlit_app.py
-import os
 import streamlit as st
 from ai_service import AIService
+from datetime import datetime
+import json
+import os
 
 # ==============================
 # Configuration Streamlit
 # ==============================
-st.set_page_config(page_title="Network - Collabo", page_icon="🤝", layout="wide")
-st.title("🤝 Network - Collabo (Agenda & IA)")
+st.set_page_config(page_title="Network", page_icon="📇", layout="wide")
+st.title("📇 Network - Agenda & IA Conversation Analysis")
 
-# ==============================
-# Initialiser le service IA
-# ==============================
 ai = AIService()
 
-# ==============================
-# Formulaire de contact + conversation
-# ==============================
-st.sidebar.header("Nouvelle conversation")
-contact_name = st.sidebar.text_input("Nom du contact")
-contact_email = st.sidebar.text_input("Email")
-contact_domain = st.sidebar.text_input("Domaine")
-contact_occassion = st.sidebar.text_input("Occasion")
-contact_topics = st.sidebar.text_area("Sujets abordés")
-conversation_text = st.sidebar.text_area("Texte de la discussion")
-meeting_datetime = st.sidebar.datetime_input("Date et heure du rendez-vous")
+# Inputs utilisateur
+contact_name = st.text_input("Nom du contact")
+contact_domain = st.text_input("Domaine")
+meeting_context = st.text_input("Occasion de rencontre")
+topics = st.text_area("Sujets abordés")
+conversation_text = st.text_area("Texte complet de la conversation")
+meeting_time = st.date_input("Rendez-vous")
+meeting_hour = st.time_input("Heure du rendez-vous")
 
-if st.sidebar.button("Analyser & Sauvegarder"):
-    if contact_name.strip() == "" or conversation_text.strip() == "":
-        st.warning("Veuillez renseigner le nom du contact et le texte de la conversation.")
+if st.button("Analyser & Enregistrer"):
+    if not contact_name or not conversation_text:
+        st.warning("Nom du contact et conversation obligatoires.")
     else:
-        contact = {
-            "name": contact_name,
-            "email": contact_email,
-            "domain": contact_domain,
-            "occasion": contact_occassion,
-            "topics": contact_topics,
-            "meeting_datetime": meeting_datetime.isoformat() if meeting_datetime else None
-        }
-        with st.spinner("Analyse IA en cours..."):
+        with st.spinner("Analyse en cours..."):
             analysis = ai.analyze_conversation(conversation_text, contact_name)
-            ai.save_conversation(contact, conversation_text, analysis)
-        st.success("Analyse terminée et conversation sauvegardée !")
+
+        st.success("Analyse terminée !")
         st.json(analysis)
 
-# ==============================
-# Historique des conversations
-# ==============================
-st.header("Historique des conversations")
-conversations = ai.load_conversations()
-for entry in reversed(conversations):
-    st.subheader(entry["contact"].get("name", "Contact inconnu"))
-    st.write("**Email:**", entry["contact"].get("email", ""))
-    st.write("**Domaine:**", entry["contact"].get("domain", ""))
-    st.write("**Occasion:**", entry["contact"].get("occasion", ""))
-    st.write("**Sujets abordés:**", entry["contact"].get("topics", ""))
-    st.write("**Rendez-vous:**", entry["contact"].get("meeting_datetime", ""))
-    st.write("**Conversation:**", entry["conversation"])
-    st.write("**Analyse IA:**")
-    st.json(entry["analysis"])
+        # Sauvegarder localement
+        os.makedirs("./data", exist_ok=True)
+        filename = f"./data/{contact_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump({
+                "contact_name": contact_name,
+                "domain": contact_domain,
+                "meeting_context": meeting_context,
+                "topics": topics,
+                "conversation": conversation_text,
+                "meeting_datetime": f"{meeting_time} {meeting_hour}",
+                "analysis": analysis
+            }, f, ensure_ascii=False, indent=2)
+        st.info(f"Conversation sauvegardée: {filename}")
