@@ -1,58 +1,14 @@
 {
-  "users": {
-    "alice": {
-      "username": "alice",
-      "password": "alice123",
-      "name": "Alice Dupont",
-      "email": "alice@example.com",
-      "domain": "Marketing",
-      "contacts": ["bob"],
-      "favorites": ["bob"],
-      "messages": {
-        "bob": [
-          {
-            "sender": "alice",
-            "content": "Salut Bob ! On peut planifier notre réunion ?",
-            "timestamp": "2026-01-13T14:00",
-            "read": false
-          }
-        ]
-      },
-      "appointments": [
-        {
-          "title": "Réunion marketing",
-          "with": "bob",
-          "datetime": "2026-01-14T10:00",
-          "reminder_minutes": 30
-        }
-      ]
-    },
-    "bob": {
-      "username": "bob",
-      "password": "bob123",
-      "name": "Bob Martin",
-      "email": "bob@example.com",
-      "domain": "Développement",
-      "contacts": ["alice"],
-      "favorites": ["alice"],
-      "messages": {
-        "alice": [
-          {
-            "sender": "alice",
-            "content": "Salut Bob ! On peut planifier notre réunion ?",
-            "timestamp": "2026-01-13T14:00",
-            "read": false
-          }
-        ]
-      },
-      "appointments": [
-        {
-          "title": "Réunion marketing",
-          "with": "alice",
-          "datetime": "2026-01-14T10:00",
-          "reminder_minutes": 30
-        }
-      ]
-    }
-  }
+  "users": [
+    {"username": "alice", "password": "alice123"},
+    {"username": "bob", "password": "bob123"}
+  ],
+  "contacts": [
+    {"owner": "alice", "contact_name": "bob", "created_at": "2026-01-13T00:00:00", "favorite": false, "online": true},
+    {"owner": "bob", "contact_name": "alice", "created_at": "2026-01-13T00:00:00", "favorite": true, "online": true}
+  ],
+  "messages": [
+    {"sender": "alice", "receiver": "bob", "text": "Salut Bob !", "timestamp": "2026-01-13T10:00:00"},
+    {"sender": "bob", "receiver": "alice", "text": "Salut Alice, comment ça va ?", "timestamp": "2026-01-13T10:05:00"}
+  ]
 }
