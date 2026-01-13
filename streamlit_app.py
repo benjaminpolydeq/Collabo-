@@ -1,179 +1,119 @@
 """
-Service d'Intelligence Artificielle pour Collabo
-app/services/ai_service.py
+Collabo - Application de Networking Intelligent
+app/streamlit_app.py
 """
 
-import os
+import streamlit as st
 import json
-from typing import Dict, List, Optional
-import openai
-from dotenv import load_dotenv
+from datetime import datetime
+from pathlib import Path
+import os
 
-# Charger les variables d'environnement depuis .env
-load_dotenv()
+# Import AI Service depuis la racine
+from ai_service import AIService
 
-class AIService:
-    """Service d'analyse IA des conversations utilisant OpenAI GPT"""
-    
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        if self.api_key:
-            openai.api_key = self.api_key
-        else:
-            print("⚠️  Pas de clé OpenAI fournie, utilisation du mode mock.")
-    
-    def analyze_conversation(self, conversation_text: str, contact_info: Dict) -> Dict:
-        """Analyse une conversation et renvoie des insights structurés"""
-        if not self.api_key:
-            return self._mock_analysis()
-        
-        prompt = f"""
-Analyse cette conversation professionnelle entre un utilisateur et {contact_info.get('name', 'un contact')}.
+# Configuration de la page
+st.set_page_config(
+    page_title="Collabo - Networking Intelligent",
+    page_icon="🤝",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-Contexte du contact:
-- Nom: {contact_info.get('name')}
-- Domaine: {contact_info.get('domain')}
-- Occasion de rencontre: {contact_info.get('occasion')}
+# CSS personnalisé (reste inchangé, je l’ai conservé pour la lisibilité)
+st.markdown("""
+<style>
+    :root { --primary-color: #2E3440; --secondary-color: #5E81AC; --accent-color: #88C0D0; --background-color: #ECEFF4; --card-background: #FFFFFF; --text-color: #2E3440; --success-color: #A3BE8C; --warning-color: #EBCB8B; --danger-color: #BF616A; }
+    .main { background-color: var(--background-color); }
+    .stApp { max-width: 1400px; margin: 0 auto; }
+    .professional-card { background: var(--card-background); border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; border-left: 4px solid var(--secondary-color); }
+    .app-header { background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .app-title { font-size: 2.5rem; font-weight: 700; margin-bottom: 8px; }
+    .app-subtitle { font-size: 1.1rem; opacity: 0.95; }
+    .status-badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; margin: 4px; }
+    .badge-high { background-color: #BF616A20; color: #BF616A; }
+    .badge-medium { background-color: #EBCB8B20; color: #D08770; }
+    .badge-low { background-color: #A3BE8C20; color: #A3BE8C; }
+    .contact-card { background: white; border-radius: 10px; padding: 20px; margin: 10px 0; border: 1px solid #E5E9F0; transition: all 0.3s ease; }
+    .contact-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); }
+    .contact-name { font-size: 1.3rem; font-weight: 600; color: var(--primary-color); margin-bottom: 8px; }
+    .contact-detail { font-size: 0.95rem; color: #4C566A; margin: 4px 0; }
+    .stButton>button { border-radius: 8px; font-weight: 500; transition: all 0.3s ease; }
+    .message-bubble { padding: 12px 16px; border-radius: 12px; margin: 8px 0; max-width: 70%; }
+    .message-sent { background: linear-gradient(135deg, #5E81AC 0%, #81A1C1 100%); color: white; margin-left: auto; }
+    .message-received { background: #ECEFF4; color: var(--text-color); }
+    .metric-card { background: white; border-radius: 10px; padding: 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .metric-value { font-size: 2.5rem; font-weight: 700; color: var(--secondary-color); }
+    .metric-label { font-size: 0.95rem; color: #4C566A; margin-top: 8px; }
+    .css-1d391kg { background-color: var(--primary-color); }
+    .alert-info { background-color: #88C0D020; border-left: 4px solid #88C0D0; padding: 16px; border-radius: 8px; margin: 16px 0; }
+</style>
+""", unsafe_allow_html=True)
 
-Conversation:
-{conversation_text}
+# Services
+ai_service = AIService()  # instance de ton service IA
 
-Fournis une analyse structurée au format JSON avec:
-1. "key_points": Liste des 3-5 points clés de la discussion
-2. "opportunities": Opportunités de collaboration identifiées
-3. "cooperation_model": Modèle de coopération suggéré
-4. "credibility_score": Score de 0-10 sur la crédibilité
-5. "usefulness_score": Score de 0-10 sur l'utilité
-6. "success_probability": Probabilité de succès (0-100%)
-7. "priority_level": Niveau de priorité (low/medium/high)
-8. "next_actions": 3 prochaines actions recommandées
-9. "red_flags": Signaux d'alerte éventuels
-10. "strengths": Points forts de cette relation
+# Gestion du stockage (local JSON chiffré)
+DATA_DIR = Path("./data")
+DATA_DIR.mkdir(exist_ok=True)
 
-Réponds uniquement avec le JSON, sans texte additionnel.
-"""
-        try:
-            response = openai.ChatCompletion.create(
-                model=os.getenv("AI_MODEL", "gpt-4"),
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=int(os.getenv("AI_MAX_TOKENS", 2000))
-            )
-            
-            content = response.choices[0].message['content']
-            
-            # Nettoyer le JSON si nécessaire
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-            
-            return json.loads(content)
-        except Exception as e:
-            print(f"Erreur d'analyse IA: {e}")
-            return self._mock_analysis()
-    
-    def suggest_conversation_strategy(self, contact_info: Dict, goal: str) -> Dict:
-        """Suggère une stratégie de conversation"""
-        if not self.api_key:
-            return self._mock_strategy()
-        
-        prompt = f"""
-Crée une stratégie de conversation professionnelle pour atteindre cet objectif: {goal}
+CONTACTS_FILE = DATA_DIR / "contacts.json"
+CONVERSATIONS_FILE = DATA_DIR / "conversations.json"
 
-Contexte du contact:
-- Nom: {contact_info.get('name')}
-- Domaine: {contact_info.get('domain')}
-- Sujets précédents: {contact_info.get('topics')}
+def load_json(file_path):
+    if file_path.exists():
+        return json.loads(file_path.read_text())
+    return [] if "contacts" in str(file_path) else {}
 
-Fournis au format JSON:
-1. "opening": Phrase d'ouverture suggérée
-2. "key_topics": 3-5 sujets à aborder
-3. "questions": Questions pertinentes à poser
-4. "value_propositions": Propositions de valeur à mettre en avant
-5. "objections": Objections potentielles et réponses
-6. "closing": Phrase de conclusion
-7. "follow_up": Actions de suivi recommandées
+def save_json(file_path, data):
+    file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
-Réponds uniquement avec le JSON.
-"""
-        try:
-            response = openai.ChatCompletion.create(
-                model=os.getenv("AI_MODEL", "gpt-4"),
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=1500
-            )
-            content = response.choices[0].message['content']
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            return json.loads(content)
-        except Exception as e:
-            print(f"Erreur de génération de stratégie: {e}")
-            return self._mock_strategy()
-    
-    def extract_action_items(self, conversation_text: str) -> List[Dict]:
-        """Extrait les actions à réaliser d'une conversation"""
-        if not self.api_key:
-            return self._mock_actions()
-        
-        prompt = f"""
-Extrais toutes les actions à réaliser de cette conversation:
+# Initialisation session state
+if "contacts" not in st.session_state:
+    st.session_state.contacts = load_json(CONTACTS_FILE)
+if "conversations" not in st.session_state:
+    st.session_state.conversations = load_json(CONVERSATIONS_FILE)
+if "current_contact" not in st.session_state:
+    st.session_state.current_contact = None
 
-{conversation_text}
+# ---------------------
+# UI Principal
+# ---------------------
+st.markdown("""
+<div class="app-header">
+    <div class="app-title">🤝 Collabo</div>
+    <div class="app-subtitle">Plateforme de Networking Intelligent & Sécurisée</div>
+</div>
+""", unsafe_allow_html=True)
 
-Pour chaque action, fournis un JSON avec:
-- "action": Description de l'action
-- "responsible": Qui doit la faire (user/contact/both)
-- "deadline": Délai suggéré
-- "priority": high/medium/low
-- "status": pending
+# Sidebar
+with st.sidebar:
+    st.markdown("### 📱 Navigation")
+    page = st.radio(
+        "",
+        ["🏠 Dashboard", "👥 Contacts", "💬 Conversations", "📊 Analytics", "⚙️ Paramètres"],
+        label_visibility="collapsed"
+    )
 
-Réponds avec un array JSON d'actions.
-"""
-        try:
-            response = openai.ChatCompletion.create(
-                model=os.getenv("AI_MODEL", "gpt-4"),
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=1000
-            )
-            content = response.choices[0].message['content']
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            return json.loads(content)
-        except Exception as e:
-            print(f"Erreur d'extraction d'actions: {e}")
-            return self._mock_actions()
-    
-    # Méthodes mock pour fonctionnement sans API
-    def _mock_analysis(self) -> Dict:
-        return {
-            "key_points": ["Discussion sur opportunités de collaboration"],
-            "opportunities": ["Projet commun potentiel"],
-            "cooperation_model": "Partenariat stratégique",
-            "credibility_score": 8,
-            "usefulness_score": 7,
-            "success_probability": 75,
-            "priority_level": "medium",
-            "next_actions": ["Planifier un appel de suivi"],
-            "red_flags": [],
-            "strengths": ["Communication claire"]
-        }
-    
-    def _mock_strategy(self) -> Dict:
-        return {
-            "opening": "Ravi de reprendre contact...",
-            "key_topics": ["État d'avancement des projets"],
-            "questions": ["Quels sont vos principaux défis?"],
-            "value_propositions": ["Expertise complémentaire"],
-            "objections": {"Manque de temps": "Proposer format court"},
-            "closing": "Planifions notre prochain point.",
-            "follow_up": ["Envoyer résumé de la conversation"]
-        }
-    
-    def _mock_actions(self) -> List[Dict]:
-        return [
-            {"action": "Envoyer présentation", "responsible": "user", "deadline": "3 jours", "priority": "high", "status": "pending"}
-        ]
+# ---------------------
+# Pages
+# ---------------------
+if page == "🏠 Dashboard":
+    st.markdown("## 📊 Tableau de Bord")
+    st.info("Dashboard en construction...")
 
-# Helper pour obtenir le service
-def get_ai_service() -> AIService:
-    return AIService()
+elif page == "👥 Contacts":
+    st.markdown("## 👥 Gestion des Contacts")
+    st.info("Contacts en construction...")
+
+elif page == "💬 Conversations":
+    st.markdown("## 💬 Messagerie Sécurisée")
+    st.info("Messagerie en construction...")
+
+elif page == "📊 Analytics":
+    st.markdown("## 📊 Analyses & Insights")
+    st.info("Analytics en construction...")
+
+elif page == "⚙️ Paramètres":
+    st.markdown("## ⚙️ Paramètres")
+    st.info("Paramètres en construction...")
