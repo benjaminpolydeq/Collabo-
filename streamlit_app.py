@@ -1,9 +1,12 @@
+# streamlit_app.py
+
 import os
 import json
-import time
 import streamlit as st
+from datetime import datetime
 from dotenv import load_dotenv
 from ai_service import AIService
+from streamlit_autorefresh import st_autorefresh
 
 # ==============================
 # Charger les variables d'environnement
@@ -11,7 +14,6 @@ from ai_service import AIService
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AI_ANALYSIS_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
-DATA_FILE = "data.json"
 
 # ==============================
 # Initialiser le service IA
@@ -19,147 +21,131 @@ DATA_FILE = "data.json"
 ai = AIService(api_key=OPENAI_API_KEY)
 
 # ==============================
-# Charger ou créer data.json
+# Fichier de données
 # ==============================
-if os.path.exists(DATA_FILE):
-    with open(DATA_FILE, "r") as f:
-        data = json.load(f)
-else:
-    data = {}
+DATA_FILE = "data.json"
+if not os.path.exists(DATA_FILE):
+    with open(DATA_FILE, "w") as f:
+        json.dump({"users": [], "contacts": [], "messages": []}, f, indent=4)
 
-# Initialisation des clés
-data.setdefault("users", [])
-data.setdefault("contacts", [])
-data.setdefault("messages", [])
+with open(DATA_FILE, "r") as f:
+    data = json.load(f)
 
-# ==============================
-# Streamlit Interface
-# ==============================
-st.set_page_config(page_title="🤝 Collabo", page_icon="🤝", layout="wide")
-st.title("🤝 Collabo - Network for Professionals")
+def save_data():
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
 # ==============================
-# Barre latérale - Connexion / Inscription
+# Fonctions utilitaires
+# ==============================
+def get_user(username):
+    return next((u for u in data["users"] if u["username"] == username), None)
+
+def get_contacts(username):
+    return [c for c in data["contacts"] if c["owner"] == username]
+
+def get_messages(user1, user2):
+    return [m for m in data["messages"]
+            if (m["sender"] == user1 and m["receiver"] == user2)
+            or (m["sender"] == user2 and m["receiver"] == user1)]
+
+# ==============================
+# Authentification
 # ==============================
 st.sidebar.header("Connexion / Inscription")
-menu = st.sidebar.selectbox("Menu", ["Connexion", "Inscription"])
+auth_mode = st.sidebar.radio("Mode", ["Connexion", "Inscription"])
+username = st.sidebar.text_input("Utilisateur")
+password = st.sidebar.text_input("Mot de passe", type="password")
 
-current_user = None
+if auth_mode == "Inscription" and st.sidebar.button("S'inscrire"):
+    if get_user(username):
+        st.sidebar.warning("Utilisateur déjà existant !")
+    else:
+        data["users"].append({"username": username, "password": password})
+        save_data()
+        st.sidebar.success("Inscription réussie !")
 
-# ------------------------------
-# Inscription
-# ------------------------------
-if menu == "Inscription":
-    new_user = st.sidebar.text_input("Nom d'utilisateur")
-    password = st.sidebar.text_input("Mot de passe", type="password")
-    if st.sidebar.button("S'inscrire"):
-        if new_user.strip() == "" or password.strip() == "":
-            st.sidebar.warning("Veuillez remplir tous les champs.")
-        elif any(u.get("username") == new_user for u in data["users"]):
-            st.sidebar.error("Nom d'utilisateur déjà existant.")
-        else:
-            user = {
-                "username": new_user,
-                "password": password,
-                "contacts": [],
-                "favorites": [],
-                "online": True
-            }
-            data["users"].append(user)
-            with open(DATA_FILE, "w") as f:
-                json.dump(data, f, indent=4)
-            st.sidebar.success("Inscription réussie ! Connectez-vous maintenant.")
-
-# ------------------------------
-# Connexion
-# ------------------------------
-elif menu == "Connexion":
-    username = st.sidebar.text_input("Nom d'utilisateur", key="login_user")
-    password = st.sidebar.text_input("Mot de passe", type="password", key="login_pass")
-    if st.sidebar.button("Se connecter"):
-        user = next((u for u in data["users"] if u.get("username") == username and u.get("password") == password), None)
-        if user:
-            current_user = user
-            st.sidebar.success(f"Connecté en tant que {username}")
-            user["online"] = True
-            with open(DATA_FILE, "w") as f:
-                json.dump(data, f, indent=4)
-        else:
-            st.sidebar.error("Nom d'utilisateur ou mot de passe incorrect.")
+elif auth_mode == "Connexion" and st.sidebar.button("Se connecter"):
+    user = get_user(username)
+    if user and user["password"] == password:
+        st.session_state["username"] = username
+        st.sidebar.success("Connecté !")
+    else:
+        st.sidebar.error("Utilisateur ou mot de passe incorrect !")
 
 # ==============================
 # Dashboard utilisateur
 # ==============================
-if current_user:
-    st.subheader(f"Bienvenue {current_user['username']}")
+if "username" in st.session_state:
+    current_user = st.session_state["username"]
+    st.header(f"Bienvenue {current_user} !")
 
-    # ==============================
-    # Section Contacts
-    # ==============================
-    st.markdown("### 📇 Contacts")
-    col1, col2 = st.columns([2, 1])
+    # ------------------------------
+    # Ajouter contact
+    # ------------------------------
+    st.subheader("Contacts")
+    new_contact = st.text_input("Ajouter un contact (nom)", key="add_contact")
+    if st.button("Ajouter Contact", key="btn_add_contact"):
+        if new_contact.strip() != "" and not any(c["contact_name"]==new_contact and c["owner"]==current_user for c in data["contacts"]):
+            data["contacts"].append({
+                "owner": current_user,
+                "contact_name": new_contact,
+                "created_at": str(datetime.now()),
+                "favorite": False,
+                "online": True
+            })
+            save_data()
+            st.success(f"{new_contact} ajouté !")
 
-    with col1:
-        st.markdown("**Ajouter un contact**")
-        contact_username = st.text_input("Nom d'utilisateur du contact")
-        if st.button("Ajouter contact"):
-            contact_user = next((u for u in data["users"] if u.get("username") == contact_username), None)
-            if contact_user:
-                if contact_username not in current_user["contacts"]:
-                    current_user["contacts"].append(contact_username)
-                    with open(DATA_FILE, "w") as f:
-                        json.dump(data, f, indent=4)
-                    st.success(f"{contact_username} ajouté à vos contacts !")
-                else:
-                    st.info(f"{contact_username} est déjà dans vos contacts.")
-            else:
-                st.error("Utilisateur introuvable.")
+    # Liste contacts
+    contacts = get_contacts(current_user)
+    st.write("Vos contacts :", [c["contact_name"] for c in contacts])
 
-    with col2:
-        st.markdown("**Contacts en ligne**")
-        online_contacts = [u for u in current_user["contacts"] if next((x for x in data["users"] if x.get("username") == u and x.get("online")), None)]
-        st.write(online_contacts if online_contacts else "Aucun contact en ligne")
-
-    # ==============================
-    # Lancer une discussion
-    # ==============================
-    st.markdown("### 💬 Discussions")
-    if current_user["contacts"]:
-        chat_contact = st.selectbox("Choisir un contact", current_user["contacts"])
-        message_text = st.text_area("Votre message")
-        if st.button("Envoyer message"):
-            if message_text.strip():
-                msg = {
-                    "from": current_user["username"],
-                    "to": chat_contact,
-                    "message": message_text,
-                    "timestamp": time.time()
-                }
-                data["messages"].append(msg)
-                with open(DATA_FILE, "w") as f:
-                    json.dump(data, f, indent=4)
+    # ------------------------------
+    # Sélection contact pour discussion
+    # ------------------------------
+    if contacts:
+        st.subheader("Discussion avec un contact")
+        selected_contact = st.selectbox("Choisir un contact", [c["contact_name"] for c in contacts], key="chat_contact")
+        conversation_text = st.text_area("Message à envoyer", key="msg_text")
+        if st.button("Envoyer message", key="send_msg"):
+            if conversation_text.strip() != "":
+                data["messages"].append({
+                    "sender": current_user,
+                    "receiver": selected_contact,
+                    "text": conversation_text,
+                    "timestamp": str(datetime.now())
+                })
+                save_data()
                 st.success("Message envoyé !")
-    else:
-        st.info("Ajoutez des contacts pour commencer à discuter.")
 
-    # ==============================
-    # Afficher les messages
-    # ==============================
-    st.markdown("### 📨 Messages")
-    chat_history = [m for m in data["messages"] if m["from"] == current_user["username"] or m["to"] == current_user["username"]]
-    for m in chat_history:
-        sender = m["from"]
-        recipient = m["to"]
-        st.write(f"**{sender} → {recipient}:** {m['message']}")
+    # ------------------------------
+    # Afficher conversation
+    # ------------------------------
+    st.subheader("Vos conversations")
+    for c in contacts:
+        st.markdown(f"**Conversation avec {c['contact_name']}**")
+        msgs = get_messages(current_user, c["contact_name"])
+        for m in msgs:
+            st.write(f"{m['timestamp']} - {m['sender']}: {m['text']}")
 
-    # ==============================
-    # Analyse IA de la discussion
-    # ==============================
-    st.markdown("### 🤖 Analyse IA")
-    if st.button("Analyser mes discussions"):
-        if chat_history:
-            all_text = "\n".join([m["message"] for m in chat_history])
-            result = ai.analyze_conversation(all_text, current_user["username"])
+    # ------------------------------
+    # Analyse IA conversation
+    # ------------------------------
+    if contacts:
+        st.subheader("Analyse IA d'une conversation")
+        contact_for_analysis = st.selectbox("Choisir un contact pour analyser", [c["contact_name"] for c in contacts], key="analysis_contact")
+        msgs_to_analyze = get_messages(current_user, contact_for_analysis)
+        full_text = "\n".join([m["text"] for m in msgs_to_analyze])
+        if st.button("Analyser cette conversation", key="analyze_btn"):
+            with st.spinner("Analyse en cours..."):
+                result = ai.analyze_conversation(full_text, contact_for_analysis)
             st.json(result)
-        else:
-            st.info("Aucune discussion à analyser.")
+
+    # ------------------------------
+    # Notifications simples
+    # ------------------------------
+    st_autorefresh(interval=5000, key="autorefresh")
+    new_msgs = [m for m in data["messages"] if m["receiver"]==current_user]
+    if new_msgs:
+        st.info(f"💬 Vous avez {len(new_msgs)} nouveau(x) message(s) !")
