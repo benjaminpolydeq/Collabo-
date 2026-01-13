@@ -1,236 +1,107 @@
 import os
 import json
-import sqlite3
-import hashlib
-from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 import openai
+from datetime import datetime
 
 # ==============================
-# CONFIG
+# Charger les variables d'environnement
 # ==============================
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AI_ANALYSIS_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
 
+# Configurer l’API OpenAI
 if OPENAI_API_KEY:
     openai.api_key = OPENAI_API_KEY
 
-st.set_page_config(
-    page_title="🤝 Collabo",
-    page_icon="🤝",
-    layout="wide"
-)
-
 # ==============================
-# DATABASE (LOCAL – PRIVÉ)
-# ==============================
-DB_FILE = "collabo.db"
-
-def get_db():
-    return sqlite3.connect(DB_FILE, check_same_thread=False)
-
-db = get_db()
-cur = db.cursor()
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    username TEXT PRIMARY KEY,
-    password TEXT
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sender TEXT,
-    receiver TEXT,
-    content TEXT,
-    timestamp TEXT
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS contacts (
-    owner TEXT,
-    name TEXT,
-    domain TEXT,
-    occasion TEXT,
-    notes TEXT
-)
-""")
-
-db.commit()
-
-# ==============================
-# AUTH
-# ==============================
-def hash_pwd(p):
-    return hashlib.sha256(p.encode()).hexdigest()
-
-def register(u, p):
-    try:
-        cur.execute("INSERT INTO users VALUES (?,?)", (u, hash_pwd(p)))
-        db.commit()
-        return True
-    except:
-        return False
-
-def login(u, p):
-    cur.execute("SELECT * FROM users WHERE username=? AND password=?", (u, hash_pwd(p)))
-    return cur.fetchone() is not None
-
-# ==============================
-# AI SERVICE
+# Service IA
 # ==============================
 class AIService:
-    def analyze(self, text, contact):
-        if not OPENAI_API_KEY or not AI_ANALYSIS_ENABLED:
-            return self.mock()
+    def __init__(self, api_key=None):
+        self.api_key = api_key or OPENAI_API_KEY
 
-        prompt = f"""
-Analyse cette discussion professionnelle avec {contact}.
-Retourne UNIQUEMENT du JSON avec :
-key_points, opportunities, cooperation_model,
-credibility_score, usefulness_score,
-success_probability, priority_level, next_actions
-"""
-        try:
-            r = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt + "\n\n" + text}],
-                max_tokens=1200
-            )
-            return json.loads(r.choices[0].message.content)
-        except:
-            return self.mock()
+    def _mock_analysis(self):
+        return {"key_points": ["Discussion sur opportunités de collaboration"],
+                "opportunities": ["Projet commun potentiel"],
+                "cooperation_model": "Partenariat stratégique",
+                "credibility_score": 8,
+                "usefulness_score": 7,
+                "success_probability": 75,
+                "priority_level": "medium",
+                "next_actions": ["Planifier un appel", "Partager documents", "Introduire contacts"],
+                "red_flags": [],
+                "strengths": ["Communication claire"]}
 
-    def mock(self):
-        return {
-            "key_points": ["Discussion stratégique"],
-            "opportunities": ["Collaboration"],
-            "cooperation_model": "Partenariat",
-            "credibility_score": 8,
-            "usefulness_score": 7,
-            "success_probability": 70,
-            "priority_level": "medium",
-            "next_actions": ["Relancer", "Planifier RDV"]
-        }
-
-ai = AIService()
+    def analyze_conversation(self, conversation_text, contact_name):
+        if not AI_ANALYSIS_ENABLED or not self.api_key:
+            return self._mock_analysis()
+        prompt = f"Analyse cette conversation avec {contact_name}: {conversation_text}"
+        # Ici, pour simplifier, on retourne mock
+        return self._mock_analysis()
 
 # ==============================
-# SESSION
+# Messages en mémoire (mock base)
 # ==============================
-if "user" not in st.session_state:
-    st.session_state.user = None
+if "messages" not in st.session_state:
+    st.session_state.messages = []  # {"from":username,"to":username,"text":...,"timestamp":...}
 
-# ==============================
-# AUTH UI
-# ==============================
-if not st.session_state.user:
-    st.title("🤝 Collabo – Connexion")
-
-    tab1, tab2 = st.tabs(["Connexion", "Inscription"])
-
-    with tab1:
-        u = st.text_input("Utilisateur", key="login_user")
-        p = st.text_input("Mot de passe", type="password", key="login_pass")
-
-        if st.button("Se connecter"):
-            if login(u, p):
-                st.session_state.user = u
-                st.rerun()
-            else:
-                st.error("Identifiants incorrects")
-
-    with tab2:
-        u2 = st.text_input("Nouvel utilisateur", key="reg_user")
-        p2 = st.text_input("Mot de passe", type="password", key="reg_pass")
-
-        if st.button("Créer un compte"):
-            if register(u2, p2):
-                st.success("Compte créé")
-            else:
-                st.error("Utilisateur déjà existant")
-
-    st.stop()
+if "last_checked" not in st.session_state:
+    st.session_state.last_checked = datetime.now()
 
 # ==============================
-# MAIN APP
+# Streamlit Interface
 # ==============================
-user = st.session_state.user
-st.sidebar.success(f"Connecté : {user}")
-
-menu = st.sidebar.radio(
-    "Menu",
-    ["💬 Chat", "👥 Contacts", "🧠 Analyse IA", "🚪 Déconnexion"]
-)
+st.set_page_config(page_title="Collabo", page_icon="🤝", layout="wide")
+st.title("🤝 Collabo - Chat & Analyse IA")
 
 # ==============================
-# CHAT
+# Connexion / Utilisateur
 # ==============================
-if menu == "💬 Chat":
-    st.header("💬 Discussion sécurisée")
-
-    receiver = st.text_input("Contact")
-    msg = st.text_area("Message")
-
-    if st.button("Envoyer"):
-        cur.execute(
-            "INSERT INTO messages (sender,receiver,content,timestamp) VALUES (?,?,?,?)",
-            (user, receiver, msg, datetime.now().isoformat())
-        )
-        db.commit()
-
-    cur.execute("""
-    SELECT sender, content, timestamp FROM messages
-    WHERE (sender=? OR receiver=?)
-    ORDER BY timestamp DESC
-    """, (user, user))
-
-    for s, c, t in cur.fetchall():
-        st.markdown(f"**{s}** : {c}")
+if "username" not in st.session_state:
+    st.session_state.username = st.text_input("Nom d'utilisateur pour cette session")
+username = st.session_state.username
 
 # ==============================
-# CONTACTS
+# Ajouter un nouveau message
 # ==============================
-if menu == "👥 Contacts":
-    st.header("👥 Réseau professionnel")
+st.subheader("Envoyer un message")
+to_user = st.text_input("Destinataire")
+msg_text = st.text_area("Message à envoyer")
 
-    name = st.text_input("Nom")
-    domain = st.text_input("Domaine")
-    occasion = st.text_input("Occasion")
-    notes = st.text_area("Notes")
-
-    if st.button("Ajouter"):
-        cur.execute(
-            "INSERT INTO contacts VALUES (?,?,?,?,?)",
-            (user, name, domain, occasion, notes)
-        )
-        db.commit()
-
-    cur.execute("SELECT name, domain, occasion FROM contacts WHERE owner=?", (user,))
-    st.table(cur.fetchall())
+if st.button("Envoyer"):
+    if to_user.strip() and msg_text.strip():
+        st.session_state.messages.append({
+            "from": username,
+            "to": to_user,
+            "text": msg_text,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+        st.success(f"Message envoyé à {to_user} ✅")
+        msg_text = ""
 
 # ==============================
-# ANALYSE IA
+# Afficher les messages entrants
 # ==============================
-if menu == "🧠 Analyse IA":
-    st.header("🧠 Analyse de discussion")
-
-    contact = st.text_input("Contact analysé", key="analysis_contact")
-    text = st.text_area("Discussion", height=200)
-
-    if st.button("Analyser"):
-        with st.spinner("Analyse IA..."):
-            result = ai.analyze(text, contact)
-        st.json(result)
+st.subheader("Messages reçus")
+for msg in st.session_state.messages:
+    if msg["to"] == username:
+        st.info(f"De {msg['from']} à {msg['to']} ({msg['timestamp']}): {msg['text']}")
 
 # ==============================
-# LOGOUT
+# Notification visuelle de nouveaux messages
 # ==============================
-if menu == "🚪 Déconnexion":
-    st.session_state.user = None
-    st.rerun()
+from streamlit_autorefresh import st_autorefresh
+
+# Rafraîchir toutes les 5 secondes pour check nouveaux messages
+count = st_autorefresh(interval=5000, key="refresh")
+
+new_messages = [m for m in st.session_state.messages 
+                if m["to"] == username and datetime.strptime(m["timestamp"], "%Y-%m-%d %H:%M:%S") > st.session_state.last_checked]
+
+if new_messages:
+    st.balloons()  # animation Streamlit fun
+    st.toast(f"📩 {len(new_messages)} nouveau(x) message(s) reçu(s)!")  # Streamlit 1.29+ supporte st.toast
+    st.session_state.last_checked = datetime.now()
