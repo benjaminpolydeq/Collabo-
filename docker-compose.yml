@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Application Collabo
+  collabo-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: collabo-app
+    image: collabo-app:latest
+    
+    # Ports
+    ports:
+      - "8501:8501"
+    
+    # Variables d'environnement
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    
+    # Volumes pour persistance des données
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    
+    # Réseau
+    networks:
+      - collabo-net
+    
+    # Politique de redémarrage
+    restart: unless-stopped
+    
+    # Healthcheck
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Limites de ressources
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+# Réseau isolé
+networks:
+  collabo-net:
+    driver: bridge
+    name: collabo-app-network
+
+# Volumes nommés (optionnel)
+volumes:
+  collabo-data:
+    driver: local
+    name: collabo-app-data
