@@ -5,3 +5,5 @@ numpy>=1.26.0
 requests>=2.31.0
 python-dotenv>=1.1.1
 openai>=1.29.0
+pydantic==2.6.2
+watchdog==3.0.0
