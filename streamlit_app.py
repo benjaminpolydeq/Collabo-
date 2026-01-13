@@ -1,22 +1,143 @@
+import os
+import json
+import sqlite3
+import hashlib
+from datetime import datetime
 import streamlit as st
-from auth import login, register
-from chat_store import add_message, get_conversation
-from ai_service import AIService
+from dotenv import load_dotenv
+import openai
 
-st.set_page_config("Collabo", "🤝", layout="wide")
+# ==============================
+# CONFIG
+# ==============================
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+AI_ANALYSIS_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
 
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
+
+st.set_page_config(
+    page_title="🤝 Collabo",
+    page_icon="🤝",
+    layout="wide"
+)
+
+# ==============================
+# DATABASE (LOCAL – PRIVÉ)
+# ==============================
+DB_FILE = "collabo.db"
+
+def get_db():
+    return sqlite3.connect(DB_FILE, check_same_thread=False)
+
+db = get_db()
+cur = db.cursor()
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    password TEXT
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender TEXT,
+    receiver TEXT,
+    content TEXT,
+    timestamp TEXT
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS contacts (
+    owner TEXT,
+    name TEXT,
+    domain TEXT,
+    occasion TEXT,
+    notes TEXT
+)
+""")
+
+db.commit()
+
+# ==============================
+# AUTH
+# ==============================
+def hash_pwd(p):
+    return hashlib.sha256(p.encode()).hexdigest()
+
+def register(u, p):
+    try:
+        cur.execute("INSERT INTO users VALUES (?,?)", (u, hash_pwd(p)))
+        db.commit()
+        return True
+    except:
+        return False
+
+def login(u, p):
+    cur.execute("SELECT * FROM users WHERE username=? AND password=?", (u, hash_pwd(p)))
+    return cur.fetchone() is not None
+
+# ==============================
+# AI SERVICE
+# ==============================
+class AIService:
+    def analyze(self, text, contact):
+        if not OPENAI_API_KEY or not AI_ANALYSIS_ENABLED:
+            return self.mock()
+
+        prompt = f"""
+Analyse cette discussion professionnelle avec {contact}.
+Retourne UNIQUEMENT du JSON avec :
+key_points, opportunities, cooperation_model,
+credibility_score, usefulness_score,
+success_probability, priority_level, next_actions
+"""
+        try:
+            r = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt + "\n\n" + text}],
+                max_tokens=1200
+            )
+            return json.loads(r.choices[0].message.content)
+        except:
+            return self.mock()
+
+    def mock(self):
+        return {
+            "key_points": ["Discussion stratégique"],
+            "opportunities": ["Collaboration"],
+            "cooperation_model": "Partenariat",
+            "credibility_score": 8,
+            "usefulness_score": 7,
+            "success_probability": 70,
+            "priority_level": "medium",
+            "next_actions": ["Relancer", "Planifier RDV"]
+        }
+
+ai = AIService()
+
+# ==============================
+# SESSION
+# ==============================
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# ---------- AUTH ----------
+# ==============================
+# AUTH UI
+# ==============================
 if not st.session_state.user:
     st.title("🤝 Collabo – Connexion")
 
     tab1, tab2 = st.tabs(["Connexion", "Inscription"])
 
     with tab1:
-        u = st.text_input("Utilisateur")
-        p = st.text_input("Mot de passe", type="password")
+        u = st.text_input("Utilisateur", key="login_user")
+        p = st.text_input("Mot de passe", type="password", key="login_pass")
+
         if st.button("Se connecter"):
             if login(u, p):
                 st.session_state.user = u
@@ -25,46 +146,91 @@ if not st.session_state.user:
                 st.error("Identifiants incorrects")
 
     with tab2:
-        u = st.text_input("Nouvel utilisateur")
-        p = st.text_input("Mot de passe", type="password")
+        u2 = st.text_input("Nouvel utilisateur", key="reg_user")
+        p2 = st.text_input("Mot de passe", type="password", key="reg_pass")
+
         if st.button("Créer un compte"):
-            if register(u, p):
-                st.success("Compte créé, connectez-vous")
+            if register(u2, p2):
+                st.success("Compte créé")
             else:
-                st.error("Utilisateur existe déjà")
+                st.error("Utilisateur déjà existant")
 
     st.stop()
 
-# ---------- APP ----------
-st.sidebar.success(f"Connecté : {st.session_state.user}")
-contact = st.sidebar.text_input("Contact (username)")
+# ==============================
+# MAIN APP
+# ==============================
+user = st.session_state.user
+st.sidebar.success(f"Connecté : {user}")
 
-if not contact:
-    st.info("Entrez le nom d’un contact pour discuter")
-    st.stop()
+menu = st.sidebar.radio(
+    "Menu",
+    ["💬 Chat", "👥 Contacts", "🧠 Analyse IA", "🚪 Déconnexion"]
+)
 
-st.title(f"💬 Discussion avec {contact}")
+# ==============================
+# CHAT
+# ==============================
+if menu == "💬 Chat":
+    st.header("💬 Discussion sécurisée")
 
-messages = get_conversation(st.session_state.user, contact)
+    receiver = st.text_input("Contact")
+    msg = st.text_area("Message")
 
-for m in messages:
-    align = "user" if m["sender"] == st.session_state.user else "assistant"
-    st.chat_message(align).write(m["content"])
+    if st.button("Envoyer"):
+        cur.execute(
+            "INSERT INTO messages (sender,receiver,content,timestamp) VALUES (?,?,?,?)",
+            (user, receiver, msg, datetime.now().isoformat())
+        )
+        db.commit()
 
-msg = st.chat_input("Votre message")
+    cur.execute("""
+    SELECT sender, content, timestamp FROM messages
+    WHERE (sender=? OR receiver=?)
+    ORDER BY timestamp DESC
+    """, (user, user))
 
-if msg:
-    add_message(st.session_state.user, contact, msg)
+    for s, c, t in cur.fetchall():
+        st.markdown(f"**{s}** : {c}")
+
+# ==============================
+# CONTACTS
+# ==============================
+if menu == "👥 Contacts":
+    st.header("👥 Réseau professionnel")
+
+    name = st.text_input("Nom")
+    domain = st.text_input("Domaine")
+    occasion = st.text_input("Occasion")
+    notes = st.text_area("Notes")
+
+    if st.button("Ajouter"):
+        cur.execute(
+            "INSERT INTO contacts VALUES (?,?,?,?,?)",
+            (user, name, domain, occasion, notes)
+        )
+        db.commit()
+
+    cur.execute("SELECT name, domain, occasion FROM contacts WHERE owner=?", (user,))
+    st.table(cur.fetchall())
+
+# ==============================
+# ANALYSE IA
+# ==============================
+if menu == "🧠 Analyse IA":
+    st.header("🧠 Analyse de discussion")
+
+    contact = st.text_input("Contact analysé", key="analysis_contact")
+    text = st.text_area("Discussion", height=200)
+
+    if st.button("Analyser"):
+        with st.spinner("Analyse IA..."):
+            result = ai.analyze(text, contact)
+        st.json(result)
+
+# ==============================
+# LOGOUT
+# ==============================
+if menu == "🚪 Déconnexion":
+    st.session_state.user = None
     st.rerun()
-
-# ---------- IA ----------
-st.divider()
-st.subheader("🧠 Analyse IA de la discussion")
-
-if st.button("Analyser la conversation"):
-    ai = AIService()
-    full_text = "\n".join(
-        f"{m['sender']}: {m['content']}" for m in messages
-    )
-    result = ai.analyze_conversation(full_text, contact)
-    st.json(result)
