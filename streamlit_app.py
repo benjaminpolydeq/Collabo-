@@ -1,198 +1,199 @@
 # streamlit_app.py
 import os
 import json
-import time
 import streamlit as st
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
-from ai_service import AIService
+import openai
+from datetime import datetime
 
 # ==============================
 # Charger les variables d'environnement
 # ==============================
-load_dotenv()  # charge .env
+load_dotenv()  # charge le fichier .env
 
-DATA_FILE = "data.json"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AI_ANALYSIS_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
 
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
+
 # ==============================
-# Helper pour charger et sauver data.json
+# Fichiers de stockage local (simulation DB)
 # ==============================
+DATA_FILE = "data.json"
+if not os.path.exists(DATA_FILE):
+    with open(DATA_FILE, "w") as f:
+        json.dump({"users": [], "contacts": {}, "messages": {}}, f, indent=4)
+
 def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"users": {}}
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
 def save_data(data):
     with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=4)
 
 # ==============================
-# Authentification
+# Service IA
 # ==============================
-def login_user(username, password):
-    data = load_data()
-    user = data["users"].get(username)
-    if user and user["password"] == password:
-        return user
-    return None
+class AIService:
+    def __init__(self, api_key=None):
+        self.api_key = api_key or OPENAI_API_KEY
 
-def register_user(username, password, name, email, domain):
-    data = load_data()
-    if username in data["users"]:
-        return False
-    data["users"][username] = {
-        "username": username,
-        "password": password,
-        "name": name,
-        "email": email,
-        "domain": domain,
-        "contacts": [],
-        "favorites": [],
-        "messages": {},
-        "appointments": []
-    }
-    save_data(data)
-    return True
+    def _mock_analysis(self):
+        return {
+            "key_points": ["Discussion sur opportunités", "Échange d'expertise", "Planification"],
+            "opportunities": ["Projet commun", "Partage de réseau"],
+            "cooperation_model": "Partenariat stratégique",
+            "credibility_score": 8,
+            "usefulness_score": 7,
+            "success_probability": 75,
+            "priority_level": "medium",
+            "next_actions": ["Appel suivi", "Partager docs", "Introduire contacts"],
+            "red_flags": [],
+            "strengths": ["Communication claire", "Compétences complémentaires"]
+        }
+
+    def analyze_conversation(self, conversation_text: str, contact_name: str):
+        if not AI_ANALYSIS_ENABLED or not self.api_key:
+            return self._mock_analysis()
+
+        prompt = f"""
+Analyse cette conversation professionnelle avec {contact_name}.
+Conversation:
+{conversation_text}
+Fournis une analyse structurée en JSON avec:
+key_points, opportunities, cooperation_model, credibility_score,
+usefulness_score, success_probability, priority_level, next_actions,
+red_flags, strengths
+Réponds uniquement en JSON.
+"""
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1500
+            )
+            content = response.choices[0].message.content.strip()
+            # Nettoyage JSON code block
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            return json.loads(content)
+        except Exception as e:
+            print(f"Erreur API OpenAI: {e}")
+            return self._mock_analysis()
 
 # ==============================
-# Interface Streamlit
+# Streamlit Interface
 # ==============================
 st.set_page_config(page_title="Collabo", page_icon="🤝", layout="wide")
-st.title("🤝 Collabo - Réseau Professionnel Sécurisé")
+st.title("🤝 Collabo - Network Pro")
 
-if "username" not in st.session_state:
-    st.session_state.username = None
+ai_service = AIService()
+data = load_data()
 
-# --- Connexion / Inscription ---
-if st.session_state.username is None:
-    st.subheader("Connexion")
-    username = st.text_input("Utilisateur")
-    password = st.text_input("Mot de passe", type="password")
-    if st.button("Se connecter"):
-        user = login_user(username, password)
-        if user:
-            st.session_state.username = username
-            st.success(f"Connecté en tant que {user['name']}")
-        else:
-            st.error("Utilisateur ou mot de passe incorrect")
+# ------------------------------
+# Login / Inscription
+# ------------------------------
+auth_container = st.container()
+with auth_container:
+    st.subheader("Connexion / Inscription")
+    col1, col2 = st.columns(2)
 
-    st.markdown("---")
-    st.subheader("Inscription")
-    reg_username = st.text_input("Nouvel utilisateur", key="reg_user")
-    reg_password = st.text_input("Mot de passe", type="password", key="reg_pass")
-    reg_name = st.text_input("Nom complet", key="reg_name")
-    reg_email = st.text_input("Email", key="reg_email")
-    reg_domain = st.text_input("Domaine", key="reg_domain")
-    if st.button("S'inscrire"):
-        if register_user(reg_username, reg_password, reg_name, reg_email, reg_domain):
-            st.success("Inscription réussie ! Connectez-vous ci-dessus.")
-        else:
-            st.error("Nom d'utilisateur déjà utilisé")
-
-# --- Dashboard principal ---
-else:
-    data = load_data()
-    user = data["users"][st.session_state.username]
-    ai_service = AIService()
-
-    st.sidebar.title(f"Bienvenue, {user['name']}")
-    menu = st.sidebar.radio("Menu", ["Contacts", "Messages", "Agenda", "Analyse IA", "Déconnexion"])
-
-    # -----------------------------
-    # Contacts
-    # -----------------------------
-    if menu == "Contacts":
-        st.header("Contacts")
-        col1, col2 = st.columns([2,1])
-        with col1:
-            st.subheader("Liste de contacts")
-            for contact_username in user["contacts"]:
-                contact = data["users"][contact_username]
-                online = st.checkbox("En ligne", value=True, key=f"online_{contact_username}", disabled=True)
-                st.write(f"{contact['name']} ({contact['domain']})")
-        with col2:
-            st.subheader("Ajouter contact")
-            new_contact = st.text_input("Nom utilisateur à ajouter")
-            if st.button("Ajouter"):
-                if new_contact in data["users"] and new_contact not in user["contacts"]:
-                    user["contacts"].append(new_contact)
-                    data["users"][st.session_state.username] = user
-                    save_data(data)
-                    st.success(f"{new_contact} ajouté à vos contacts")
-                else:
-                    st.error("Utilisateur inexistant ou déjà contact")
-
-    # -----------------------------
-    # Messages
-    # -----------------------------
-    elif menu == "Messages":
-        st.header("Messagerie")
-        selected_contact = st.selectbox("Choisir un contact", user["contacts"])
-        if selected_contact:
-            messages = user["messages"].get(selected_contact, [])
-            for msg in messages:
-                st.write(f"{msg['timestamp']} - **{msg['sender']}**: {msg['content']}")
-            
-            new_msg = st.text_area("Nouveau message")
-            if st.button("Envoyer"):
-                timestamp = datetime.now().isoformat(timespec="minutes")
-                msg_dict = {"sender": st.session_state.username, "content": new_msg, "timestamp": timestamp, "read": False}
-                messages.append(msg_dict)
-                user["messages"][selected_contact] = messages
-                data["users"][st.session_state.username] = user
-
-                # Ajouter le message au contact aussi
-                contact_user = data["users"][selected_contact]
-                contact_messages = contact_user["messages"].get(st.session_state.username, [])
-                contact_messages.append(msg_dict)
-                contact_user["messages"][st.session_state.username] = contact_messages
-                data["users"][selected_contact] = contact_user
-
-                save_data(data)
-                st.success("Message envoyé !")
-
-    # -----------------------------
-    # Agenda
-    # -----------------------------
-    elif menu == "Agenda":
-        st.header("Agenda")
-        for appt in user["appointments"]:
-            st.write(f"{appt['datetime']} - {appt['title']} avec {appt['with']} (Rappel {appt['reminder_minutes']} min avant)")
-        st.subheader("Ajouter rendez-vous")
-        appt_title = st.text_input("Titre")
-        appt_with = st.selectbox("Avec", user["contacts"])
-        appt_datetime = st.datetime_input("Date et heure")
-        appt_reminder = st.number_input("Rappel (minutes avant)", min_value=1, max_value=120, value=30)
-        if st.button("Ajouter rendez-vous", key="add_appt"):
-            user["appointments"].append({
-                "title": appt_title,
-                "with": appt_with,
-                "datetime": appt_datetime.isoformat(),
-                "reminder_minutes": appt_reminder
-            })
-            data["users"][st.session_state.username] = user
-            save_data(data)
-            st.success("Rendez-vous ajouté !")
-
-    # -----------------------------
-    # Analyse IA
-    # -----------------------------
-    elif menu == "Analyse IA":
-        st.header("Analyse de conversation")
-        contact_for_analysis = st.selectbox("Choisir un contact pour analyser la discussion", user["contacts"])
-        conversation_text = st.text_area("Coller la conversation à analyser")
-        if st.button("Analyser"):
-            if conversation_text.strip():
-                result = ai_service.analyze_conversation(conversation_text, contact_for_analysis)
-                st.json(result)
+    with col1:
+        username = st.text_input("Nom d'utilisateur", key="login_user")
+        password = st.text_input("Mot de passe", type="password", key="login_pass")
+        if st.button("Se connecter", key="login_btn"):
+            user = next((u for u in data["users"] if u["username"] == username and u["password"] == password), None)
+            if user:
+                st.success(f"Bienvenue {username} !")
+                st.session_state["user"] = username
             else:
-                st.warning("Veuillez coller une conversation à analyser")
+                st.warning("Utilisateur ou mot de passe incorrect")
 
-    # -----------------------------
-    # Déconnexion
-    # -----------------------------
-    elif menu == "Déconnexion":
-        st.session_state.username = None
-        st.experimental_rerun()
+    with col2:
+        new_user = st.text_input("Nouvel utilisateur", key="signup_user")
+        new_pass = st.text_input("Mot de passe", type="password", key="signup_pass")
+        if st.button("S'inscrire", key="signup_btn"):
+            if any(u["username"] == new_user for u in data["users"]):
+                st.warning("Nom déjà utilisé")
+            else:
+                data["users"].append({"username": new_user, "password": new_pass})
+                save_data(data)
+                st.success(f"Utilisateur {new_user} créé !")
+
+# ------------------------------
+# Dashboard principal
+# ------------------------------
+if "user" in st.session_state:
+    user = st.session_state["user"]
+    st.header(f"Dashboard de {user}")
+
+    dash_container = st.container()
+
+    with dash_container:
+        # Ajouter un contact
+        st.subheader("Contacts")
+        new_contact = st.text_input("Nom du contact", key="contact_name")
+        contact_email = st.text_input("Email", key="contact_email")
+        contact_domain = st.text_input("Domaine", key="contact_domain")
+        contact_topic = st.text_input("Sujet abordé", key="contact_topic")
+        contact_occasion = st.text_input("Occasion", key="contact_occasion")
+
+        if st.button("Ajouter contact", key="add_contact"):
+            contact_id = f"{user}_{new_contact}"
+            if user not in data["contacts"]:
+                data["contacts"][user] = {}
+            data["contacts"][user][contact_id] = {
+                "name": new_contact,
+                "email": contact_email,
+                "domain": contact_domain,
+                "topic": contact_topic,
+                "occasion": contact_occasion
+            }
+            if contact_id not in data["messages"]:
+                data["messages"][contact_id] = []
+            save_data(data)
+            st.success(f"Contact {new_contact} ajouté !")
+
+        # Liste des contacts
+        st.subheader("Liste des contacts")
+        if user in data["contacts"]:
+            for cid, c in data["contacts"][user].items():
+                st.write(f"{c['name']} | {c['email']} | {c['domain']}")
+                # Lancer discussion
+                if st.button(f"Chat avec {c['name']}", key=f"chat_{cid}"):
+                    st.session_state["current_chat"] = cid
+
+    # ------------------------------
+    # Chat / Analyse conversation
+    # ------------------------------
+    if "current_chat" in st.session_state:
+        chat_id = st.session_state["current_chat"]
+        st.subheader(f"Discussion avec {data['contacts'][user][chat_id]['name']}")
+        chat_input = st.text_area("Votre message", key=f"msg_input_{chat_id}")
+        if st.button("Envoyer", key=f"send_{chat_id}"):
+            message = {
+                "from": user,
+                "to": data["contacts"][user][chat_id]["name"],
+                "text": chat_input,
+                "timestamp": datetime.now().isoformat()
+            }
+            data["messages"][chat_id].append(message)
+            save_data(data)
+            st.success("Message envoyé !")
+            chat_input = ""
+
+        # Afficher l'historique
+        st.subheader("Historique")
+        for msg in data["messages"][chat_id]:
+            st.write(f"{msg['timestamp']} | {msg['from']} -> {msg['to']}: {msg['text']}")
+
+        # Analyse IA
+        if st.button("Analyser cette conversation", key=f"analyze_{chat_id}"):
+            conversation_text = "\n".join(msg["text"] for msg in data["messages"][chat_id])
+            result = ai_service.analyze_conversation(conversation_text, data["contacts"][user][chat_id]["name"])
+            st.subheader("Analyse IA")
+            st.json(result)
