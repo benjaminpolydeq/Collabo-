@@ -1,184 +1,216 @@
-""" Collabo - Application de Networking Intelligent Version finale stable """
-
-import os
-import json
+# streamlit_app.py
+import os, json
 import streamlit as st
 from datetime import datetime
 from dotenv import load_dotenv
-from ai_service import AIService
-import qrcode
 from io import BytesIO
+import qrcode
+from ai_service import AIService  # ton service IA existant
 
-# ==============================
-# Configuration de la page
-# ==============================
+# =============================
+# CONFIG PAGE
+# =============================
 st.set_page_config(
-    page_title="Collabo - Networking Intelligent",
+    page_title="Collabo",
     page_icon="🤝",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# ==============================
-# CSS personnalisé
-# ==============================
-st.markdown("""
-<style>
-.main-header { background: linear-gradient(135deg, #2E3440 0%, #5E81AC 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; text-align: center; }
-.contact-card { background: white; border-radius: 8px; padding: 15px; margin: 10px 0; border-left: 4px solid #5E81AC; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-.online-badge { background: #A3BE8C; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.8em; }
-.offline-badge { background: #BF616A; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.8em; }
-.favorite-star { color: #EBCB8B; font-size: 1.2em; }
-.message-sent { background: #5E81AC; color: white; padding: 10px; border-radius: 10px; margin: 5px 0; max-width: 70%; margin-left: auto; }
-.message-received { background: #ECEFF4; color: #2E3440; padding: 10px; border-radius: 10px; margin: 5px 0; max-width: 70%; }
-.stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-.stat-number { font-size: 2em; font-weight: bold; color: #5E81AC; }
-</style>
-""", unsafe_allow_html=True)
-
-# ==============================
-# Charger variables d'environnement
-# ==============================
+# =============================
+# LOAD ENV
+# =============================
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-AI_ANALYSIS_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
+AI_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
 
-# ==============================
-# Initialiser le service IA
-# ==============================
-try:
-    ai = AIService(api_key=OPENAI_API_KEY)
-except:
-    ai = None
-    st.warning("Service IA non disponible - Continuez sans analyse IA")
+# =============================
+# SESSION STATE INIT
+# =============================
+DEFAULT_STATE = {
+    "initialized": True,
+    "logged_in": False,
+    "username": "",
+    "page": "Dashboard",
+    "auth_mode": "Connexion"
+}
 
-# ==============================
-# Fichier de données
-# ==============================
+for k, v in DEFAULT_STATE.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+# =============================
+# DATA
+# =============================
 DATA_FILE = "data.json"
+
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w") as f:
         json.dump({
             "users": [
-                {"username": "alice", "password": "pass123", "email": "alice@example.com", "created_at": str(datetime.now()), "online": True},
-                {"username": "bob", "password": "pass123", "email": "bob@example.com", "created_at": str(datetime.now()), "online": False}
+                {"username": "alice", "password": "123", "online": True},
+                {"username": "bob", "password": "123", "online": False}
             ],
             "contacts": [
-                {"owner": "alice", "contact_name": "bob", "favorite": True, "online": False, "created_at": str(datetime.now())}
+                {"owner": "alice", "name": "bob", "favorite": True}
             ],
-            "messages": [
-                {"sender": "alice", "receiver": "bob", "text": "Salut Bob !", "timestamp": str(datetime.now()), "read": False}
-            ],
-            "invitations": []
+            "messages": []
         }, f, indent=4)
 
-def load_data():
-    with open(DATA_FILE, "r") as f:
+def load_data(): 
+    with open(DATA_FILE) as f: 
         return json.load(f)
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+def save_data(d): 
+    with open(DATA_FILE, "w") as f: 
+        json.dump(d, f, indent=4)
 
 data = load_data()
 
-# ==============================
-# Fonctions utilitaires
-# ==============================
-def get_user(username):
-    return next((u for u in data["users"] if u["username"] == username), None)
+# =============================
+# UTILITIES
+# =============================
+def get_user(u):
+    return next((x for x in data["users"] if x["username"] == u), None)
 
-def get_contacts(username):
-    return [c for c in data["contacts"] if c["owner"] == username]
+def get_contacts(u):
+    return [c for c in data["contacts"] if c["owner"] == u]
 
-def get_messages(user1, user2):
+def get_messages(u1, u2):
     return sorted(
-        [m for m in data["messages"]
-         if (m["sender"] == user1 and m["receiver"] == user2)
-         or (m["sender"] == user2 and m["receiver"] == user1)],
+        [m for m in data["messages"] if (m["sender"]==u1 and m["receiver"]==u2) or (m["sender"]==u2 and m["receiver"]==u1)],
         key=lambda x: x["timestamp"]
     )
 
-def count_unread_messages(username):
-    return len([m for m in data["messages"]
-                if m["receiver"] == username and not m.get("read", False)])
-
-def generate_qr_code(username):
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    invite_data = f"collabo://add/{username}"
-    qr.add_data(invite_data)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return buffer
-
-def toggle_favorite(owner, contact_name):
-    for c in data["contacts"]:
-        if c["owner"] == owner and c["contact_name"] == contact_name:
-            c["favorite"] = not c.get("favorite", False)
-            break
-    save_data(data)
-
-def update_online_status(username, status):
-    user = get_user(username)
-    if user:
-        user["online"] = status
+def toggle_fav(idx):
+    contacts = get_contacts(st.session_state.username)
+    if idx < len(contacts):
+        contacts[idx]["favorite"] = not contacts[idx]["favorite"]
         save_data(data)
 
-# ==============================
-# Sidebar Authentification
-# ==============================
-if "username" not in st.session_state:
-    st.markdown('<div class="main-header"><h1>🤝 Collabo</h1><p>Networking Intelligent & Sécurisé</p></div>', unsafe_allow_html=True)
-    
-    st.sidebar.header("🔐 Authentification")
-    auth_mode = st.sidebar.radio("Mode", ["Connexion", "Inscription"], key="auth_mode")
-    username_input = st.sidebar.text_input("👤 Utilisateur", key="username_input")
-    password_input = st.sidebar.text_input("🔑 Mot de passe", type="password", key="password_input")
+def login():
+    u = st.session_state.input_user
+    p = st.session_state.input_pass
+    user = get_user(u)
+    if user and user["password"] == p:
+        st.session_state.logged_in = True
+        st.session_state.username = u
 
-    if auth_mode == "Inscription":
-        email_input = st.sidebar.text_input("📧 Email (optionnel)", key="email_input")
-        st.sidebar.button("✅ S'inscrire", key="btn_register",
-                          on_click=lambda: register_user(username_input, password_input, email_input))
-    else:
-        st.sidebar.button("🚀 Se connecter", key="btn_login",
-                          on_click=lambda: login_user(username_input, password_input))
+def send_message(to_user, text):
+    if text.strip() == "":
+        return
+    data["messages"].append({
+        "sender": st.session_state.username,
+        "receiver": to_user,
+        "text": text,
+        "timestamp": str(datetime.now())
+    })
+    save_data(data)
 
-    st.info("👋 Bienvenue sur Collabo ! Connectez-vous ou créez un compte pour commencer.")
+def generate_qr(username):
+    qr = qrcode.QRCode(version=1, box_size=6, border=2)
+    qr.add_data(f"collabo://add/{username}")
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
 
-# ==============================
-# Application principale
-# ==============================
-else:
-    current_user = st.session_state["username"]
-    st.success(f"✅ {current_user} connecté - toutes fonctionnalités disponibles")
+def ai_analyze(message):
+    if AI_ENABLED and OPENAI_API_KEY:
+        ai = AIService(api_key=OPENAI_API_KEY)
+        return ai.analyze(message)
+    return "IA désactivée"
 
-    # Exemple stable de container pour contacts
-    contacts_placeholder = st.container()
-    with contacts_placeholder:
-        st.subheader("📇 Mes contacts")
-        user_contacts = get_contacts(current_user)
-        for idx, contact in enumerate(user_contacts):
-            key_fav = f"fav_{contact['contact_name']}_{idx}"
-            col1, col2 = st.columns([0.9, 0.1])
-            with col1:
-                st.write(contact["contact_name"])
-            with col2:
-                st.button("★" if contact.get("favorite") else "☆",
-                          key=key_fav,
-                          on_click=toggle_favorite,
-                          args=(current_user, contact["contact_name"]))
+# =============================
+# SIDEBAR
+# =============================
+st.sidebar.title("🤝 Collabo")
 
-    # Placeholder pour messages
-    messages_placeholder = st.container()
-    with messages_placeholder:
-        st.subheader("💬 Messages")
-        # Ici on pourrait mettre boucle messages similaire
+st.sidebar.radio("Navigation", ["Dashboard","Contacts","Messages","IA","Stats"], key="page")
+st.sidebar.radio("Mode", ["Connexion","Inscription"], key="auth_mode")
 
-    # Placeholder pour dashboard / stats
-    stats_placeholder = st.container()
-    with stats_placeholder:
-        st.subheader("📊 Statistiques")
-        st.write("A compléter selon ton code actuel")
+st.sidebar.text_input("Utilisateur", key="input_user")
+st.sidebar.text_input("Mot de passe", type="password", key="input_pass")
+st.sidebar.text_input("Email (optionnel)", key="input_email")
+
+st.sidebar.button("Se connecter", on_click=login)
+
+# =============================
+# HEADER
+# =============================
+st.markdown("<h1 style='text-align:center'>🤝 Collabo</h1>", unsafe_allow_html=True)
+
+if not st.session_state.logged_in:
+    st.info("Veuillez vous connecter")
+    st.stop()
+
+st.success(f"Connecté : {st.session_state.username}")
+
+# =============================
+# DASHBOARD
+# =============================
+if st.session_state.page == "Dashboard":
+    st.subheader("📊 Tableau de bord")
+    st.write(f"Bienvenue {st.session_state.username} !")
+
+# =============================
+# CONTACTS
+# =============================
+if st.session_state.page == "Contacts":
+    st.subheader("📇 Contacts")
+    contacts = get_contacts(st.session_state.username)
+    MAX = 10
+    for i in range(MAX):
+        col1, col2, col3 = st.columns([0.6,0.1,0.3])
+        if i < len(contacts):
+            contact = contacts[i]
+            col1.write(contact["name"])
+            col2.button("★" if contact.get("favorite") else "☆", key=f"fav_{i}", on_click=toggle_fav, args=(i,))
+            buf = generate_qr(contact["name"])
+            col3.image(buf, width=80)
+        else:
+            col1.write("")
+            col2.write("")
+            col3.write("")
+
+# =============================
+# MESSAGES
+# =============================
+if st.session_state.page == "Messages":
+    st.subheader("💬 Messages")
+    contacts = get_contacts(st.session_state.username)
+    MAX = 5
+    for i in range(MAX):
+        col1, col2 = st.columns([0.7,0.3])
+        if i < len(contacts):
+            contact = contacts[i]
+            m_placeholder = st.empty()
+            with m_placeholder:
+                st.write(f"Messages avec {contact['name']}")
+                msg_input = st.text_input(f"Envoyer à {contact['name']}", key=f"msg_input_{i}")
+                st.button("Envoyer", key=f"send_{i}", on_click=send_message, args=(contact["name"], msg_input))
+        else:
+            col1.write("")
+            col2.write("")
+
+# =============================
+# IA
+# =============================
+if st.session_state.page == "IA":
+    st.subheader("🤖 Analyse IA")
+    msg_input = st.text_area("Texte à analyser", key="ai_input")
+    if st.button("Analyser"):
+        result = ai_analyze(msg_input)
+        st.write(result)
+
+# =============================
+# STATS
+# =============================
+if st.session_state.page == "Stats":
+    st.subheader("📊 Statistiques")
+    contacts = get_contacts(st.session_state.username)
+    total_contacts = len(contacts)
+    total_messages = len([m for m in data["messages"] if m["sender"]==st.session_state.username])
+    st.write(f"Total contacts: {total_contacts}")
+    st.write(f"Total messages envoyés: {total_messages}")
