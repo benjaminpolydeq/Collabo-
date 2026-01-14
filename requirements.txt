@@ -1,23 +1,25 @@
-# Interface
-streamlit>=1.27.0
+# Collabo - Application de Networking Intelligent
+# Dépendances Python - Version Complète
 
-# Gestion des variables d'environnement
-python-dotenv>=1.0.0
+# Framework principal
+streamlit==1.31.0
 
-# API OpenAI
-openai>=1.0.0
+# Intelligence Artificielle
+openai==1.12.0
+anthropic==0.18.1
 
-# Pour manipuler les dates et heures (si besoin)
-pytz>=2023.3
+# Utilitaires
+python-dotenv==1.0.1
 
-# JSON & utilitaires
-jsonschema>=4.19.0
+# QR Code (IMPORTANT!)
+qrcode[pil]==7.4.2
+Pillow==10.2.0
 
-# Optionnel pour notifications / rafraîchissement
-streamlit-autorefresh>=0.1.3
+# Auto-refresh (optionnel)
+# streamlit-autorefresh==1.0.1
 
-# Pour le déploiement léger
-requests>=2.31.0
+# Sécurité (pour futures fonctionnalités)
+# cryptography==42.0.2
 
-# Pour sécuriser les mots de passe
-bcrypt>=4.0.1
+# Date et temps
+python-dateutil==2.8.2
