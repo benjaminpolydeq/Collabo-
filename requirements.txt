@@ -1,18 +1,15 @@
-# Streamlit et utils
+# Core
 streamlit==1.31.0
 python-dotenv==1.0.1
 pandas>=2.1.0
 Pillow==10.2.0
-qrcode[pil]==7.4.2
+qrcode==7.4.2
 python-dateutil==2.8.2
 
-# IA et NLP
+# IA minimal
 openai==1.12.0
 anthropic==0.18.1
+
+# Transformers/tokenizers uniquement si IA activée
 transformers==4.34.0
 tokenizers==0.13.3
-
-# Cryptography (si tu sécurises plus tard)
-cryptography>=41.0
-
-# Optionnel: maturin ou Rust bindings sont évités pour éviter erreurs sur Android/Termux
