@@ -1,25 +1,7 @@
-# Collabo - Application de Networking Intelligent
-# Dépendances Python - Version Complète
-
-# Framework principal
 streamlit==1.31.0
-
-# Intelligence Artificielle
 openai==1.12.0
 anthropic==0.18.1
-
-# Utilitaires
 python-dotenv==1.0.1
-
-# QR Code (IMPORTANT!)
 qrcode[pil]==7.4.2
 Pillow==10.2.0
-
-# Auto-refresh (optionnel)
-# streamlit-autorefresh==1.0.1
-
-# Sécurité (pour futures fonctionnalités)
-# cryptography==42.0.2
-
-# Date et temps
 python-dateutil==2.8.2
