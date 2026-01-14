@@ -1,5 +1,4 @@
-# streamlit_app.py
-""" Collabo - Application de Networking Intelligent Version finale corrigée """
+""" Collabo - Application de Networking Intelligent Version finale stable """
 
 import os
 import json
@@ -9,7 +8,6 @@ from dotenv import load_dotenv
 from ai_service import AIService
 import qrcode
 from io import BytesIO
-import base64
 
 # ==============================
 # Configuration de la page
@@ -39,7 +37,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==============================
-# Charger les variables d'environnement
+# Charger variables d'environnement
 # ==============================
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -58,8 +56,6 @@ except:
 # Fichier de données
 # ==============================
 DATA_FILE = "data.json"
-
-# Pré-charger avec deux utilisateurs si le fichier n'existe pas
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w") as f:
         json.dump({
@@ -132,43 +128,23 @@ def update_online_status(username, status):
         save_data(data)
 
 # ==============================
-# Authentification Sidebar
+# Sidebar Authentification
 # ==============================
 if "username" not in st.session_state:
     st.markdown('<div class="main-header"><h1>🤝 Collabo</h1><p>Networking Intelligent & Sécurisé</p></div>', unsafe_allow_html=True)
-
+    
     st.sidebar.header("🔐 Authentification")
-    auth_mode = st.sidebar.radio("", ["Connexion", "Inscription"])
-    username = st.sidebar.text_input("👤 Utilisateur")
-    password = st.sidebar.text_input("🔑 Mot de passe", type="password")
+    auth_mode = st.sidebar.radio("Mode", ["Connexion", "Inscription"], key="auth_mode")
+    username_input = st.sidebar.text_input("👤 Utilisateur", key="username_input")
+    password_input = st.sidebar.text_input("🔑 Mot de passe", type="password", key="password_input")
 
     if auth_mode == "Inscription":
-        email = st.sidebar.text_input("📧 Email (optionnel)")
-        if st.sidebar.button("✅ S'inscrire", use_container_width=True):
-            if not username or not password:
-                st.sidebar.error("❌ Veuillez remplir tous les champs")
-            elif get_user(username):
-                st.sidebar.warning("⚠️ Utilisateur déjà existant !")
-            else:
-                data["users"].append({
-                    "username": username,
-                    "password": password,
-                    "email": email,
-                    "created_at": str(datetime.now()),
-                    "online": True
-                })
-                save_data(data)
-                st.sidebar.success("✅ Inscription réussie ! Connectez-vous maintenant.")
-
-    elif auth_mode == "Connexion":
-        if st.sidebar.button("🚀 Se connecter", use_container_width=True):
-            user = get_user(username)
-            if user and user["password"] == password:
-                st.session_state["username"] = username
-                update_online_status(username, True)
-                st.rerun()
-            else:
-                st.sidebar.error("❌ Utilisateur ou mot de passe incorrect !")
+        email_input = st.sidebar.text_input("📧 Email (optionnel)", key="email_input")
+        st.sidebar.button("✅ S'inscrire", key="btn_register",
+                          on_click=lambda: register_user(username_input, password_input, email_input))
+    else:
+        st.sidebar.button("🚀 Se connecter", key="btn_login",
+                          on_click=lambda: login_user(username_input, password_input))
 
     st.info("👋 Bienvenue sur Collabo ! Connectez-vous ou créez un compte pour commencer.")
 
@@ -177,14 +153,32 @@ if "username" not in st.session_state:
 # ==============================
 else:
     current_user = st.session_state["username"]
-
-    # ==============================
-    # TODO: Ajouter auto-refresh notifications si souhaité
-    # ==============================
-    # from streamlit_autorefresh import st_autorefresh
-    # st_autorefresh(interval=5000, key="autorefresh")
-
-    # ... (le reste de ton code Tabs Dashboard, Contacts, Messages, IA, Paramètres)
-    # ⚠️ Assurez-vous de toujours donner des clés uniques pour boutons dans les boucles, par ex. key=f"fav_{contact['contact_name']}_{idx}"
-
     st.success(f"✅ {current_user} connecté - toutes fonctionnalités disponibles")
+
+    # Exemple stable de container pour contacts
+    contacts_placeholder = st.container()
+    with contacts_placeholder:
+        st.subheader("📇 Mes contacts")
+        user_contacts = get_contacts(current_user)
+        for idx, contact in enumerate(user_contacts):
+            key_fav = f"fav_{contact['contact_name']}_{idx}"
+            col1, col2 = st.columns([0.9, 0.1])
+            with col1:
+                st.write(contact["contact_name"])
+            with col2:
+                st.button("★" if contact.get("favorite") else "☆",
+                          key=key_fav,
+                          on_click=toggle_favorite,
+                          args=(current_user, contact["contact_name"]))
+
+    # Placeholder pour messages
+    messages_placeholder = st.container()
+    with messages_placeholder:
+        st.subheader("💬 Messages")
+        # Ici on pourrait mettre boucle messages similaire
+
+    # Placeholder pour dashboard / stats
+    stats_placeholder = st.container()
+    with stats_placeholder:
+        st.subheader("📊 Statistiques")
+        st.write("A compléter selon ton code actuel")
