@@ -1,0 +1,14 @@
+{
+  "users": [
+    {"username": "alice", "password": "alice123"},
+    {"username": "bob", "password": "bob123"}
+  ],
+  "contacts": [
+    {"owner": "alice", "contact_name": "bob", "created_at": "2026-01-13T00:00:00", "favorite": false, "online": true},
+    {"owner": "bob", "contact_name": "alice", "created_at": "2026-01-13T00:00:00", "favorite": true, "online": true}
+  ],
+  "messages": [
+    {"sender": "alice", "receiver": "bob", "text": "Salut Bob !", "timestamp": "2026-01-13T10:00:00"},
+    {"sender": "bob", "receiver": "alice", "text": "Salut Alice, comment ça va ?", "timestamp": "2026-01-13T10:05:00"}
+  ]
+}
