@@ -1,5 +1,8 @@
 # Dépendances système pour Streamlit Cloud
-# Nécessaires pour qrcode et Pillow
+# Ce fichier est OPTIONNEL pour qrcode
+# Si vous avez des erreurs, supprimez ce fichier
+
+# libzbar0
 
 libzbar0
 zbar-tools
