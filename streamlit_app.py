@@ -2,10 +2,16 @@
 import os, json
 import streamlit as st
 from datetime import datetime
-from dotenv import load_dotenv
 from io import BytesIO
 import qrcode
-from ai_service import AIService  # ton service IA existant
+from dotenv import load_dotenv
+
+# Optionnel : IA avancée (Transformers/Tokenizers)
+try:
+    from ai_service import AIService
+    AI_AVAILABLE = True
+except:
+    AI_AVAILABLE = False
 
 # =============================
 # CONFIG PAGE
@@ -21,7 +27,7 @@ st.set_page_config(
 # =============================
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-AI_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
+AI_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true" and AI_AVAILABLE
 
 # =============================
 # SESSION STATE INIT
@@ -117,9 +123,12 @@ def generate_qr(username):
     return buf
 
 def ai_analyze(message):
-    if AI_ENABLED and OPENAI_API_KEY:
-        ai = AIService(api_key=OPENAI_API_KEY)
-        return ai.analyze(message)
+    if AI_ENABLED:
+        try:
+            ai = AIService(api_key=OPENAI_API_KEY)
+            return ai.analyze(message)
+        except Exception as e:
+            return f"Erreur IA: {e}"
     return "IA désactivée"
 
 # =============================
@@ -155,44 +164,50 @@ if st.session_state.page == "Dashboard":
     st.write(f"Bienvenue {st.session_state.username} !")
 
 # =============================
-# CONTACTS
+# CONTACTS (DOM stable)
 # =============================
 if st.session_state.page == "Contacts":
     st.subheader("📇 Contacts")
     contacts = get_contacts(st.session_state.username)
     MAX = 10
+    placeholders = [st.container() for _ in range(MAX)]
     for i in range(MAX):
-        col1, col2, col3 = st.columns([0.6,0.1,0.3])
-        if i < len(contacts):
-            contact = contacts[i]
-            col1.write(contact["name"])
-            col2.button("★" if contact.get("favorite") else "☆", key=f"fav_{i}", on_click=toggle_fav, args=(i,))
-            buf = generate_qr(contact["name"])
-            col3.image(buf, width=80)
-        else:
-            col1.write("")
-            col2.write("")
-            col3.write("")
+        contact = contacts[i] if i < len(contacts) else None
+        with placeholders[i]:
+            col1, col2, col3 = st.columns([0.6,0.1,0.3])
+            if contact:
+                col1.write(contact["name"])
+                col2.button(
+                    "★" if contact.get("favorite") else "☆",
+                    key=f"fav_{i}",
+                    on_click=toggle_fav,
+                    args=(i,)
+                )
+                col3.image(generate_qr(contact["name"]), width=80)
+            else:
+                col1.write("")
+                col2.write("")
+                col3.write("")
 
 # =============================
-# MESSAGES
+# MESSAGES (DOM stable)
 # =============================
 if st.session_state.page == "Messages":
     st.subheader("💬 Messages")
     contacts = get_contacts(st.session_state.username)
     MAX = 5
+    placeholders = [st.container() for _ in range(MAX)]
     for i in range(MAX):
-        col1, col2 = st.columns([0.7,0.3])
-        if i < len(contacts):
-            contact = contacts[i]
-            m_placeholder = st.empty()
-            with m_placeholder:
-                st.write(f"Messages avec {contact['name']}")
+        contact = contacts[i] if i < len(contacts) else None
+        with placeholders[i]:
+            col1, col2 = st.columns([0.7,0.3])
+            if contact:
+                col1.write(f"Messages avec {contact['name']}")
                 msg_input = st.text_input(f"Envoyer à {contact['name']}", key=f"msg_input_{i}")
                 st.button("Envoyer", key=f"send_{i}", on_click=send_message, args=(contact["name"], msg_input))
-        else:
-            col1.write("")
-            col2.write("")
+            else:
+                col1.write("")
+                col2.write("")
 
 # =============================
 # IA
@@ -201,8 +216,7 @@ if st.session_state.page == "IA":
     st.subheader("🤖 Analyse IA")
     msg_input = st.text_area("Texte à analyser", key="ai_input")
     if st.button("Analyser"):
-        result = ai_analyze(msg_input)
-        st.write(result)
+        st.write(ai_analyze(msg_input))
 
 # =============================
 # STATS
