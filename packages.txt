@@ -3,6 +3,3 @@
 # Si vous avez des erreurs, supprimez ce fichier
 
 # libzbar0
-
-libzbar0
-zbar-tools
