@@ -70,7 +70,11 @@ def save_data(d):
     with open(DATA_FILE, "w") as f: 
         json.dump(d, f, indent=4)
 
-data = load_data()
+# Charger les données UNE SEULE FOIS par session
+if "data" not in st.session_state:
+    st.session_state.data = load_data()
+
+data = st.session_state.data
 
 # =============================
 # UTILITIES
@@ -90,8 +94,15 @@ def get_messages(u1, u2):
 def toggle_fav(idx):
     contacts = get_contacts(st.session_state.username)
     if idx < len(contacts):
-        contacts[idx]["favorite"] = not contacts[idx]["favorite"]
+        contact_to_toggle = contacts[idx]
+        # Trouver l'index dans data["contacts"]
+        for c in data["contacts"]:
+            if c["owner"] == st.session_state.username and c["name"] == contact_to_toggle["name"]:
+                c["favorite"] = not c.get("favorite", False)
+                break
         save_data(data)
+        st.session_state.data = load_data()  # Recharger les données
+        st.rerun()
 
 def login():
     u = st.session_state.input_user
@@ -100,6 +111,7 @@ def login():
     if user and user["password"] == p:
         st.session_state.logged_in = True
         st.session_state.username = u
+        st.rerun()
 
 def send_message(to_user, text):
     if text.strip() == "":
@@ -111,6 +123,8 @@ def send_message(to_user, text):
         "timestamp": str(datetime.now())
     })
     save_data(data)
+    st.session_state.data = load_data()
+    st.rerun()
 
 def generate_qr(username):
     qr = qrcode.QRCode(version=1, box_size=6, border=2)
@@ -164,50 +178,57 @@ if st.session_state.page == "Dashboard":
     st.write(f"Bienvenue {st.session_state.username} !")
 
 # =============================
-# CONTACTS (DOM stable)
+# CONTACTS (DOM stable - CORRIGÉ)
 # =============================
 if st.session_state.page == "Contacts":
     st.subheader("📇 Contacts")
     contacts = get_contacts(st.session_state.username)
-    MAX = 10
-    placeholders = [st.container() for _ in range(MAX)]
-    for i in range(MAX):
-        contact = contacts[i] if i < len(contacts) else None
-        with placeholders[i]:
-            col1, col2, col3 = st.columns([0.6,0.1,0.3])
-            if contact:
-                col1.write(contact["name"])
-                col2.button(
-                    "★" if contact.get("favorite") else "☆",
-                    key=f"fav_{i}",
-                    on_click=toggle_fav,
-                    args=(i,)
-                )
-                col3.image(generate_qr(contact["name"]), width=80)
-            else:
-                col1.write("")
-                col2.write("")
-                col3.write("")
+    
+    if len(contacts) == 0:
+        st.info("Aucun contact pour le moment")
+    else:
+        for i, contact in enumerate(contacts):
+            with st.container():
+                col1, col2, col3 = st.columns([0.6, 0.1, 0.3])
+                with col1:
+                    st.write(contact["name"])
+                with col2:
+                    st.button(
+                        "★" if contact.get("favorite") else "☆",
+                        key=f"fav_{contact['name']}_{i}",
+                        on_click=toggle_fav,
+                        args=(i,)
+                    )
+                with col3:
+                    st.image(generate_qr(contact["name"]), width=80)
 
 # =============================
-# MESSAGES (DOM stable)
+# MESSAGES (DOM stable - CORRIGÉ)
 # =============================
 if st.session_state.page == "Messages":
     st.subheader("💬 Messages")
     contacts = get_contacts(st.session_state.username)
-    MAX = 5
-    placeholders = [st.container() for _ in range(MAX)]
-    for i in range(MAX):
-        contact = contacts[i] if i < len(contacts) else None
-        with placeholders[i]:
-            col1, col2 = st.columns([0.7,0.3])
-            if contact:
-                col1.write(f"Messages avec {contact['name']}")
-                msg_input = st.text_input(f"Envoyer à {contact['name']}", key=f"msg_input_{i}")
-                st.button("Envoyer", key=f"send_{i}", on_click=send_message, args=(contact["name"], msg_input))
-            else:
-                col1.write("")
-                col2.write("")
+    
+    if len(contacts) == 0:
+        st.info("Aucun contact pour envoyer des messages")
+    else:
+        for i, contact in enumerate(contacts):
+            with st.expander(f"💬 Conversation avec {contact['name']}", expanded=(i==0)):
+                # Afficher l'historique
+                messages = get_messages(st.session_state.username, contact["name"])
+                if messages:
+                    for msg in messages[-5:]:  # Afficher les 5 derniers messages
+                        sender = "Vous" if msg["sender"] == st.session_state.username else contact["name"]
+                        st.text(f"{sender}: {msg['text']}")
+                else:
+                    st.info("Aucun message")
+                
+                # Zone d'envoi
+                with st.form(key=f"form_{contact['name']}_{i}"):
+                    msg_input = st.text_input(f"Envoyer à {contact['name']}", key=f"msg_input_{i}")
+                    submit = st.form_submit_button("Envoyer")
+                    if submit and msg_input:
+                        send_message(contact["name"], msg_input)
 
 # =============================
 # IA
@@ -216,7 +237,9 @@ if st.session_state.page == "IA":
     st.subheader("🤖 Analyse IA")
     msg_input = st.text_area("Texte à analyser", key="ai_input")
     if st.button("Analyser"):
-        st.write(ai_analyze(msg_input))
+        with st.spinner("Analyse en cours..."):
+            result = ai_analyze(msg_input)
+            st.write(result)
 
 # =============================
 # STATS
@@ -226,5 +249,9 @@ if st.session_state.page == "Stats":
     contacts = get_contacts(st.session_state.username)
     total_contacts = len(contacts)
     total_messages = len([m for m in data["messages"] if m["sender"]==st.session_state.username])
-    st.write(f"Total contacts: {total_contacts}")
-    st.write(f"Total messages envoyés: {total_messages}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total contacts", total_contacts)
+    with col2:
+        st.metric("Messages envoyés", total_messages)
