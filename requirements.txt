@@ -1,18 +1,14 @@
-# Core Streamlit app
+ Core Streamlit app
 streamlit==1.31.0
 python-dotenv==1.0.1
-pandas>=2.1.0
+pandas==2.1.4
 Pillow==10.2.0
-qrcode==7.4.2
+qrcode[pil]==7.4.2
 python-dateutil==2.8.2
 
-# IA minimal
+# IA minimal (versions compatibles)
 openai==1.12.0
 anthropic==0.18.1
 
-# Optional advanced IA (commenter si problème d'installation)
-# transformers==4.34.0
-# tokenizers==0.13.3
-
-# Security (optional for cryptography features)
-cryptography>=41.0
+# Security
+cryptography==41.0.7
