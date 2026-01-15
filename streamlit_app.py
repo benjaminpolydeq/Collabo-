@@ -584,8 +584,7 @@ elif st.session_state.page == "Contacts":
 # =============================
 # MESSAGES
 # =============================
- elif st.session_state.page == "Messages":
-    contacts = get_contacts(st.session_state.username)
+ elif st.session_state.page == "Messages":contacts = get_contacts(st.session_state.username)
     
     for i, contact in enumerate(contacts):
         messages = get_messages(st.session_state.username, contact["name"])
